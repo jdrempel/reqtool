@@ -1,0 +1,3 @@
+[submodule "dep/zigcli"]
+	path = dep/zigcli
+	url = https://github.com/jiacai2050/zigcli.git
