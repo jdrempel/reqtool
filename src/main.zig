@@ -1,11 +1,16 @@
 const std = @import("std");
 const simargs = @import("simargs");
 
+const util = @import("util/root.zig");
+const ReqDatabase = @import("writer.zig").ReqDatabase;
+
 const print = std.debug.print;
 
 fn str(comptime N: usize) type {
     return *const [N:0]u8;
 }
+
+const StrArrayList = std.ArrayList([]const u8);
 
 const Args = struct {};
 
@@ -64,9 +69,6 @@ const Sections = enum {
 };
 
 pub fn main() !void {
-    // Prints to stderr (it's a shortcut based on `std.io.getStdErr()`)
-    std.debug.print("All your {s} are belong to us.\n", .{"codebase"});
-
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
 
@@ -75,12 +77,10 @@ pub fn main() !void {
     var opt = try simargs.parse(allocator, Args, "[file]", null);
     defer opt.deinit();
 
-    var numDirectories: u32 = 0;
-    var directories = std.ArrayList([]const u8).init(allocator);
+    var directories = StrArrayList.init(allocator);
     defer directories.deinit();
 
-    var numFiles: u32 = 0;
-    var files = std.ArrayList([]const u8).init(allocator);
+    var files = StrArrayList.init(allocator);
     defer files.deinit();
 
     for (opt.positional_args.items, 0..) |arg, idx| {
@@ -92,12 +92,10 @@ pub fn main() !void {
                 .directory => {
                     print("{s} was a directory\n", .{arg});
                     try directories.append(arg);
-                    numDirectories += 1;
                 },
                 .file => {
                     print("{s} was a file\n", .{arg});
                     try files.append(arg);
-                    numFiles += 1;
                 },
                 else => {
                     print("{s} in position {d} was somehow neither a dir or file, skipping...\n", .{ arg, idx });
@@ -108,57 +106,20 @@ pub fn main() !void {
 
     print("There are {d} files and {d} directories given.\n", .{ files.items.len, directories.items.len });
 
-    var map = std.StringHashMap(std.ArrayList([]const u8)).init(allocator);
-    defer map.deinit();
+    var db = ReqDatabase.init(allocator);
 
     for (files.items) |filePath| {
-        const rawExtension = std.fs.path.extension(filePath);
-        const extension = try std.ascii.allocLowerString(allocator, rawExtension);
-        const fileType = std.meta.stringToEnum(FileTypes, extension) orelse .__unknown__;
-
-        const sectionType: Sections = switch (fileType) {
-            .anm, .bar, .hnt, .lyr, .rgn, .ter, .wld => .world,
-            .cfg => .loc,
-            .class, .lvl, .req => .lvl,
-            .envfx => .envfx,
-            .fff => .font,
-            .ffx, .fx, .hud, .mus, .snd => .config,
-            .lua => .script,
-            .msh => .model,
-            .odf => .class,
-            .pic, .tga => .texture,
-            .pln => .congraph,
-            .prp => .prop,
-            .pth => .path,
-            .sfx => .bnk,
-            .stm => .str,
-            .xml => .shader,
-            .zafbin => .animbank,
-            else => .config, // Default to config since it seems to contain most non-world-specific types
-        };
-        const sectionName: []const u8 = @tagName(sectionType);
-
-        if (map.getPtr(sectionName)) |section| {
-            try section.*.append(std.fs.path.basename(filePath));
-        } else {
-            var section = std.ArrayList([]const u8).init(allocator);
-            try section.append(std.fs.path.basename(filePath));
-            try map.put(sectionName, section);
-        }
+        try db.addEntry(filePath);
     }
 
-    const outputFileName = "output.req";
-    const outputFile = try std.fs.cwd().createFile(outputFileName, .{});
-    const writer = outputFile.writer();
-    _ = try writer.write("ucft\n{\n\tREQN\n\t{\n");
-    var iter = map.keyIterator();
-    while (iter.next()) |sectionName| {
-        try std.fmt.format(writer, "\t\t\"{s}\"\n", .{sectionName.*});
-        for (map.get(sectionName.*).?.items) |item| {
-            try std.fmt.format(writer, "\t\t\"{s}\"\n", .{item});
-        }
-    }
-    _ = try writer.write("\t}\n}\n");
+    for (directories.items) |dirPath| {}
+
+    const outputFile = try std.fs.cwd().createFile("output.req", .{});
+    const fileWriter = outputFile.writer();
+    try db.write(fileWriter);
+
+    const result = try util.string.quoteString("foobar", allocator);
+    print("{s}\n", .{result});
 }
 
 fn readOdfLines(file: std.fs.File) void {
