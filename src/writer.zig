@@ -20,6 +20,7 @@ const FileTypes = enum {
     msh,
     mus,
     odf,
+    option,
     pic,
     pln,
     prp,
@@ -86,6 +87,9 @@ pub const ReqDatabase = struct {
             .lua => .script,
             .msh => .model,
             .odf => .class,
+            .option => {
+                return;
+            },
             .pic, .tga => .texture,
             .pln => .congraph,
             .prp => .prop,

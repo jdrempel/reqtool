@@ -14,60 +14,6 @@ const StrArrayList = std.ArrayList([]const u8);
 
 const Args = struct {};
 
-const FileTypes = enum {
-    anm,
-    bar,
-    cfg,
-    class,
-    envfx,
-    fff,
-    ffx,
-    fx,
-    hnt,
-    hud,
-    lua,
-    lvl,
-    lyr,
-    msh,
-    mus,
-    odf,
-    pic,
-    pln,
-    prp,
-    pth,
-    req,
-    rgn,
-    sfx,
-    snd,
-    stm,
-    ter,
-    tga,
-    wld,
-    xml,
-    zafbin,
-    __unknown__,
-};
-
-const Sections = enum {
-    animbank,
-    bnk,
-    class,
-    config,
-    congraph,
-    envfx,
-    font,
-    loc,
-    lvl,
-    model,
-    path,
-    prop,
-    script,
-    shader,
-    str,
-    texture,
-    world,
-};
-
 pub fn main() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
@@ -86,12 +32,18 @@ pub fn main() !void {
     for (opt.positional_args.items, 0..) |arg, idx| {
         const parent = std.fs.path.dirname(arg);
         if (parent) |p| {
-            const dir = try std.fs.openDirAbsolute(p, .{});
-            const stat = try dir.statFile(arg);
+            const parentDir = try std.fs.openDirAbsolute(p, .{});
+            const stat = try parentDir.statFile(arg);
             switch (stat.kind) {
                 .directory => {
-                    print("{s} was a directory\n", .{arg});
-                    try directories.append(arg);
+                    print("{s} was a directory, iterating...\n", .{arg});
+                    const dir = try std.fs.openDirAbsolute(arg, .{ .iterate = true });
+                    var iter = dir.iterate();
+                    while (try iter.next()) |entry| {
+                        if (entry.kind != std.fs.File.Kind.file) continue; // TODO what about PC/XBOX/PS2 platform dirs?
+                        const entryNameCopy = try allocator.dupe(u8, entry.name);
+                        try files.append(entryNameCopy);
+                    }
                 },
                 .file => {
                     print("{s} was a file\n", .{arg});
@@ -109,10 +61,13 @@ pub fn main() !void {
     var db = ReqDatabase.init(allocator);
 
     for (files.items) |filePath| {
+        print("FILE    {s}\n", .{filePath});
         try db.addEntry(filePath);
     }
 
-    for (directories.items) |dirPath| {}
+    for (directories.items) |dirPath| {
+        _ = dirPath;
+    }
 
     const outputFile = try std.fs.cwd().createFile("output.req", .{});
     const fileWriter = outputFile.writer();
