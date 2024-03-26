@@ -74,12 +74,12 @@ pub const ReqDatabase = struct {
     }
 
     pub fn addEntry(self: *Self, entry: []const u8) !void {
-        const rawExtension = std.fs.path.extension(entry);
-        const untrimmedExtension = try std.ascii.allocLowerString(self.allocator, rawExtension);
-        const extension = std.mem.trimLeft(u8, untrimmedExtension, ".");
-        const fileType = std.meta.stringToEnum(FileTypes, extension) orelse .__unknown__;
+        const raw_extension = std.fs.path.extension(entry);
+        const lower_extension = try std.ascii.allocLowerString(self.allocator, raw_extension);
+        const extension = std.mem.trimLeft(u8, lower_extension, ".");
+        const file_type = std.meta.stringToEnum(FileTypes, extension) orelse .__unknown__;
 
-        const sectionType: Sections = switch (fileType) {
+        const section_type: Sections = switch (file_type) {
             .anm, .bar, .hnt, .lyr, .rgn, .ter, .wld => .world,
             .cfg => .loc,
             .class, .lvl, .req => .lvl,
@@ -89,12 +89,12 @@ pub const ReqDatabase = struct {
             .lua => .script,
             .msh => .model,
             .odf => o: {
-                var odfParser = parser.OdfParser.init(self.allocator);
-                const dependencies = try odfParser.parse(entry);
+                var odf_parser = parser.OdfParser.init(self.allocator);
+                const dependencies = try odf_parser.parse(entry);
                 var iter = dependencies.keyIterator();
-                while (iter.next()) |depSectionName| {
-                    for (dependencies.get(depSectionName.*).?.items) |item| {
-                        try self.addEntryImpl(depSectionName.*, item);
+                while (iter.next()) |dep_section_name| {
+                    for (dependencies.get(dep_section_name.*).?.items) |item| {
+                        try self.addEntryImpl(dep_section_name.*, item);
                     }
                 }
                 break :o .class;
@@ -113,22 +113,22 @@ pub const ReqDatabase = struct {
             .zafbin => .animbank,
             else => .config, // Default to config since it seems to contain most non-world-specific types
         };
-        const sectionName: []const u8 = @tagName(sectionType);
-        try self.addEntryImpl(sectionName, entry);
+        const section_name: []const u8 = @tagName(section_type);
+        try self.addEntryImpl(section_name, entry);
     }
 
-    fn addEntryImpl(self: *Self, sectionName: []const u8, entry: []const u8) !void {
-        const pathStem = try util.path.stem(entry, self.allocator);
-        if (self.sections.getPtr(sectionName)) |section| {
+    fn addEntryImpl(self: *Self, section_name: []const u8, entry: []const u8) !void {
+        const entry_name = try util.path.stem(entry, self.allocator);
+        if (self.sections.getPtr(section_name)) |section| {
             // TODO this is O(n) for performance, eventually I'd like to just store a HashMap of string:null
-            for (section.*.items) |existingItem| {
-                if (std.mem.eql(u8, existingItem, pathStem)) return;
+            for (section.*.items) |existing_item| {
+                if (std.mem.eql(u8, existing_item, entry_name)) return;
             }
-            try section.*.append(pathStem);
+            try section.*.append(entry_name);
         } else {
             var section = StrArrayList.init(self.allocator);
-            try section.append(pathStem);
-            try self.sections.put(sectionName, section);
+            try section.append(entry_name);
+            try self.sections.put(section_name, section);
         }
     }
 
@@ -139,10 +139,10 @@ pub const ReqDatabase = struct {
     pub fn write(self: *Self, writer: anytype) !void {
         try writer.writeAll("ucft\n{\n");
         var iter = self.sections.keyIterator();
-        while (iter.next()) |sectionName| {
+        while (iter.next()) |section_name| {
             try writer.writeAll("\tREQN\n\t{\n");
-            try std.fmt.format(writer, "\t\t{!s}\n", .{self.quote(sectionName.*)});
-            for (self.sections.get(sectionName.*).?.items) |item| {
+            try std.fmt.format(writer, "\t\t{!s}\n", .{self.quote(section_name.*)});
+            for (self.sections.get(section_name.*).?.items) |item| {
                 try std.fmt.format(writer, "\t\t{!s}\n", .{self.quote(item)});
             }
             try writer.writeAll("\t}\n");
