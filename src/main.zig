@@ -55,7 +55,6 @@ pub fn main() !void {
             const stat = try parent_dir.statFile(abs_dir_path);
             switch (stat.kind) {
                 .directory => {
-                    print("{s} was a directory, iterating...\n", .{abs_dir_path});
                     const dir = try std.fs.openDirAbsolute(abs_dir_path, .{ .iterate = true });
                     var iter = dir.iterate();
                     while (try iter.next()) |entry| {
@@ -93,7 +92,10 @@ pub fn main() !void {
         try components.append(".req");
         output_file_name = try std.mem.concat(allocator, u8, components.items);
     }
-    const output_file = try std.fs.cwd().createFile(output_file_name, .{});
+    const output_file = std.fs.cwd().createFile(output_file_name, .{}) catch |err| {
+        print("{!}: {s}\n", .{ err, output_file_name });
+        std.process.exit(1);
+    };
     const file_writer = output_file.writer();
     try db.write(file_writer);
 }
