@@ -37,6 +37,7 @@ pub const OdfParser = struct {
         const reader = file.reader();
 
         var dependencies = std.StringHashMap(StrArrayList).init(self.allocator);
+
         var current_section: []u8 = undefined;
         var maybe_line = try reader.readUntilDelimiterOrEofAlloc(self.allocator, '\n', 2048);
         while (maybe_line) |line| : (maybe_line = try reader.readUntilDelimiterOrEofAlloc(self.allocator, '\n', 2048)) {
@@ -81,6 +82,7 @@ pub const OdfParser = struct {
                 try section.*.append(value);
             } else {
                 var section = StrArrayList.init(self.allocator);
+
                 try section.append(value);
                 try dependencies.put(destination, section);
             }

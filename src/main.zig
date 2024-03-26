@@ -8,7 +8,19 @@ const print = std.debug.print;
 
 const StrArrayList = std.ArrayList([]const u8);
 
-const Args = struct {};
+const Args = struct {
+    output: ?[]const u8,
+    help: bool = false,
+
+    pub const __shorts__ = .{
+        .output = .o,
+        .help = .h,
+    };
+
+    pub const __messages__ = .{
+        .output = "The name of the .req file to output (no extension required)",
+    };
+};
 
 pub fn main() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
@@ -16,7 +28,7 @@ pub fn main() !void {
 
     const allocator = arena.allocator();
 
-    var opt = try simargs.parse(allocator, Args, "[file]", null);
+    var opt = try simargs.parse(allocator, Args, "FILES...", null);
     defer opt.deinit();
 
     var files = StrArrayList.init(allocator);
@@ -49,6 +61,7 @@ pub fn main() !void {
                     while (try iter.next()) |entry| {
                         if (entry.kind != std.fs.File.Kind.file) continue; // TODO what about PC/XBOX/PS2 platform dirs?
                         var path_components = StrArrayList.init(allocator);
+                        defer path_components.deinit();
                         try path_components.append(try dir.realpathAlloc(allocator, "."));
                         try path_components.append(entry.name);
                         const abs_file_path = try std.fs.path.join(allocator, path_components.items);
@@ -72,7 +85,15 @@ pub fn main() !void {
         try db.addEntry(file_path);
     }
 
-    const output_file = try std.fs.cwd().createFile("output.req", .{});
+    var output_file_name = opt.args.output orelse "output.req";
+    if (!std.mem.endsWith(u8, output_file_name, ".req")) {
+        var components = StrArrayList.init(allocator);
+        defer components.deinit();
+        try components.append(output_file_name);
+        try components.append(".req");
+        output_file_name = try std.mem.concat(allocator, u8, components.items);
+    }
+    const output_file = try std.fs.cwd().createFile(output_file_name, .{});
     const file_writer = output_file.writer();
     try db.write(file_writer);
 }
