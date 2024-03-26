@@ -46,7 +46,6 @@ pub fn main() !void {
                     }
                 },
                 .file => {
-                    print("{s} was a file\n", .{arg});
                     try files.append(arg);
                 },
                 else => {
@@ -56,12 +55,9 @@ pub fn main() !void {
         }
     }
 
-    print("There are {d} files and {d} directories given.\n", .{ files.items.len, directories.items.len });
-
     var db = ReqDatabase.init(allocator);
 
     for (files.items) |filePath| {
-        print("FILE    {s}\n", .{filePath});
         try db.addEntry(filePath);
     }
 
@@ -72,21 +68,4 @@ pub fn main() !void {
     const outputFile = try std.fs.cwd().createFile("output.req", .{});
     const fileWriter = outputFile.writer();
     try db.write(fileWriter);
-
-    const result = try util.string.quoteString("foobar", allocator);
-    print("{s}\n", .{result});
-}
-
-fn readOdfLines(file: std.fs.File) void {
-    const reader = file.reader();
-
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer arena.deinit();
-
-    const allocator = arena.allocator();
-
-    var maybeLine = try reader.readUntilDelimiterOrEofAlloc(allocator, '\n', 2048);
-    while (maybeLine) |line| : (maybeLine = try reader.readUntilDelimiterOrEofAlloc(allocator, '\n', 2048)) {
-        print("Got line: {s}\n", .{line});
-    }
 }

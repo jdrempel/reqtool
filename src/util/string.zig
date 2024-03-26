@@ -7,3 +7,7 @@ fn wrapString(string: []const u8, wrapper: []const u8, allocator: std.mem.Alloca
 pub fn quoteString(string: []const u8, allocator: std.mem.Allocator) ![]const u8 {
     return try wrapString(string, "\"", allocator);
 }
+
+pub fn stringContains(haystack: []const u8, needle: []const u8) bool {
+    return std.mem.containsAtLeast(u8, haystack, 1, needle);
+}

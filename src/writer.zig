@@ -1,4 +1,6 @@
 const std = @import("std");
+
+const parser = @import("parser.zig");
 const util = @import("util/root.zig");
 
 const StrArrayList = std.ArrayList([]const u8);
@@ -86,8 +88,19 @@ pub const ReqDatabase = struct {
             .ffx, .fx, .hud, .mus, .snd => .config,
             .lua => .script,
             .msh => .model,
-            .odf => .class,
+            .odf => o: {
+                var odfParser = parser.OdfParser.init(self.allocator);
+                const dependencies = try odfParser.parse(entry);
+                var iter = dependencies.keyIterator();
+                while (iter.next()) |depSectionName| {
+                    for (dependencies.get(depSectionName.*).?.items) |item| {
+                        try self.addEntryImpl(depSectionName.*, item);
+                    }
+                }
+                break :o .class;
+            },
             .option => {
+                // Ignore .option files... if there are other types we should be ignoring, add them here
                 return;
             },
             .pic, .tga => .texture,
@@ -101,9 +114,16 @@ pub const ReqDatabase = struct {
             else => .config, // Default to config since it seems to contain most non-world-specific types
         };
         const sectionName: []const u8 = @tagName(sectionType);
+        try self.addEntryImpl(sectionName, entry);
+    }
 
+    fn addEntryImpl(self: *Self, sectionName: []const u8, entry: []const u8) !void {
         const pathStem = try util.path.stem(entry, self.allocator);
         if (self.sections.getPtr(sectionName)) |section| {
+            // TODO this is O(n) for performance, eventually I'd like to just store a HashMap of string:null
+            for (section.*.items) |existingItem| {
+                if (std.mem.eql(u8, existingItem, pathStem)) return;
+            }
             try section.*.append(pathStem);
         } else {
             var section = StrArrayList.init(self.allocator);
