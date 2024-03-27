@@ -10,15 +10,18 @@ const StrArrayList = std.ArrayList([]const u8);
 
 const Args = struct {
     output: ?[]const u8,
+    @"parse-odfs": ?bool = false,
     help: bool = false,
 
     pub const __shorts__ = .{
         .output = .o,
+        .@"parse-odfs" = .p,
         .help = .h,
     };
 
     pub const __messages__ = .{
         .output = "The name of the .req file to output (no extension required)",
+        .@"parse-odfs" = "When set, .odf files will be parsed and have dependencies added to the .req file automatically",
     };
 };
 
@@ -73,7 +76,7 @@ pub fn main() !void {
         }
     }
 
-    var db = ReqDatabase.init(allocator);
+    var db = ReqDatabase.init(allocator, opt);
 
     for (files.items) |file_path| {
         try db.addEntry(file_path);
