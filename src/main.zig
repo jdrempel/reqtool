@@ -59,12 +59,7 @@ pub fn main() !void {
                     var iter = dir.iterate();
                     while (try iter.next()) |entry| {
                         if (entry.kind != std.fs.File.Kind.file) continue; // TODO what about PC/XBOX/PS2 platform dirs?
-                        var path_components = StrArrayList.init(allocator);
-                        defer path_components.deinit();
-                        try path_components.append(try dir.realpathAlloc(allocator, "."));
-                        try path_components.append(entry.name);
-                        const abs_file_path = try std.fs.path.join(allocator, path_components.items);
-                        // const entry_name_copy = try allocator.dupe(u8, entry.name);
+                        const abs_file_path = try std.fs.path.join(allocator, &[_][]const u8{ try dir.realpathAlloc(allocator, "."), entry.name });
                         try files.append(abs_file_path);
                     }
                 },
@@ -86,11 +81,7 @@ pub fn main() !void {
 
     var output_file_name = opt.args.output orelse "output.req";
     if (!std.mem.endsWith(u8, output_file_name, ".req")) {
-        var components = StrArrayList.init(allocator);
-        defer components.deinit();
-        try components.append(output_file_name);
-        try components.append(".req");
-        output_file_name = try std.mem.concat(allocator, u8, components.items);
+        output_file_name = try std.mem.concat(allocator, u8, &[_][]const u8{ output_file_name, ".req" });
     }
     const output_file = std.fs.cwd().createFile(output_file_name, .{}) catch |err| {
         print("{!}: {s}\n", .{ err, output_file_name });
