@@ -3,7 +3,8 @@ const util = @import("util/root.zig");
 const string = util.string;
 const types = util.types;
 
-const print = std.debug.print;
+const parser_logger = std.log.scoped(.parser);
+
 const StrArrayList = std.ArrayList([]const u8);
 
 const spaces = " \r\n\t";
@@ -32,6 +33,7 @@ pub const OdfParser = struct {
     }
 
     pub fn parse(self: *Self, path: []const u8) !std.StringHashMap(StrArrayList) {
+        parser_logger.info("Parsing odf file: {s}", .{path});
         const file = try std.fs.openFileAbsolute(path, .{});
         defer file.close();
         const reader = file.reader();
@@ -45,6 +47,7 @@ pub const OdfParser = struct {
             var key_value = std.mem.splitScalar(u8, line, '=');
             const key = std.mem.trim(u8, key_value.first(), spaces);
             if (std.mem.startsWith(u8, key, "[")) {
+                parser_logger.debug("Entered section {s}", .{key});
                 current_section = try self.allocator.dupe(u8, std.mem.trim(u8, key, brackets));
                 continue;
             }
@@ -68,6 +71,8 @@ pub const OdfParser = struct {
             } else if (string.stringContains(key, texture_ndl)) {
                 destination = try self.allocator.dupe(u8, texture_str);
             } else continue;
+
+            parser_logger.debug("Key {s} will be placed under req section {s}", .{ key, destination });
 
             // Remove extra spaces and quotes, and if there's nothing left, skip this line
             const raw_value = std.mem.trim(u8, key_value.next().?, spaces ++ quotes);

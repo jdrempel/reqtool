@@ -3,6 +3,8 @@ const std = @import("std");
 const parser = @import("parser.zig");
 const util = @import("util/root.zig");
 
+const writer_logger = std.log.scoped(.writer);
+
 const StrArrayList = std.ArrayList([]const u8);
 
 const FileTypes = enum {
@@ -120,6 +122,7 @@ pub const ReqDatabase = struct {
             else => .config, // Default to config since it seems to contain most non-world-specific types
         };
         const section_name: []const u8 = @tagName(section_type);
+        writer_logger.debug("Adding entry to section \"{s}\": {s}", .{ section_name, entry });
         try self.addEntryImpl(section_name, entry);
     }
 
@@ -143,6 +146,7 @@ pub const ReqDatabase = struct {
     }
 
     pub fn write(self: *Self, writer: anytype) !void {
+        writer_logger.debug("Beginning req database write...", .{});
         try writer.writeAll("ucft\n{\n");
         var iter = self.sections.keyIterator();
         while (iter.next()) |section_name| {
@@ -154,5 +158,6 @@ pub const ReqDatabase = struct {
             try writer.writeAll("\t}\n");
         }
         try writer.writeAll("}\n");
+        writer_logger.debug("Completed req database write", .{});
     }
 };
