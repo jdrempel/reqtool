@@ -68,12 +68,12 @@ pub fn main() !void {
     for (opt.positional_args.items, 0..) |arg, idx| {
         const abs_dir = if (std.fs.path.isAbsolute(arg)) a: {
             break :a std.fs.openDirAbsolute(arg, .{}) catch |err| {
-                root_logger.err("{!}: {s}\n", .{ err, arg });
+                root_logger.err("{!}: {s}\n", .{ @errorName(err), arg });
                 std.process.exit(1);
             };
         } else b: {
             break :b std.fs.cwd().openDir(arg, .{}) catch |err| {
-                root_logger.err("{!}: {s}\n", .{ err, arg });
+                root_logger.err("{!}: {s}\n", .{ @errorName(err), arg });
                 std.process.exit(1);
             };
         };
@@ -116,7 +116,7 @@ pub fn main() !void {
         output_file_name = try std.mem.concat(allocator, u8, &[_][]const u8{ output_file_name, ".req" });
     }
     const output_file = std.fs.cwd().createFile(output_file_name, .{}) catch |err| {
-        root_logger.err("{!}: {s}\n", .{ err, output_file_name });
+        root_logger.err("{!}: {s}\n", .{ @errorName(err), output_file_name });
         std.process.exit(1);
     };
     const file_writer = output_file.writer();
