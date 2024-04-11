@@ -1,6 +1,14 @@
 const std = @import("std");
 const simargs = @import("simargs");
 
+const glfw = @import("zglfw");
+const zgpu = @import("zgpu");
+const zopengl = @import("zopengl");
+const wgpu = zgpu.wgpu;
+const zgui = @import("zgui");
+
+const window_title = "reqtool";
+
 const util = @import("util/root.zig");
 const ReqDatabase = @import("writer.zig").ReqDatabase;
 
@@ -54,10 +62,76 @@ const root_logger = std.log.scoped(.root);
 pub fn main() !void {
     root_logger.info("Starting reqtool", .{});
 
+    try glfw.init();
+    defer glfw.terminate();
+
+    const gl_major = 4;
+    const gl_minor = 0;
+    glfw.windowHintTyped(.context_version_major, gl_major);
+    glfw.windowHintTyped(.context_version_minor, gl_minor);
+    glfw.windowHintTyped(.opengl_profile, .opengl_core_profile);
+    glfw.windowHintTyped(.opengl_forward_compat, true);
+    glfw.windowHintTyped(.client_api, .opengl_api);
+    glfw.windowHintTyped(.doublebuffer, true);
+
+    const window = try glfw.Window.create(800, 600, window_title, null);
+    defer window.destroy();
+    window.setSizeLimits(400, 300, -1, -1);
+
+    glfw.makeContextCurrent(window);
+    glfw.swapInterval(1);
+
+    try zopengl.loadCoreProfile(glfw.getProcAddress, gl_major, gl_minor);
+
+    const gl = zopengl.bindings;
+
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
-
     const allocator = arena.allocator();
+
+    zgui.init(allocator);
+    defer zgui.deinit();
+
+    const scale_factor = scale_factor: {
+        const scale = window.getContentScale();
+        break :scale_factor @max(scale[0], scale[1]);
+    };
+    _ = zgui.io.addFontFromFile(
+        "assets/Roboto-Medium.ttf",
+        std.math.floor(16.0 * scale_factor),
+    );
+
+    zgui.getStyle().scaleAllSizes(scale_factor);
+
+    zgui.backend.init(window);
+    defer zgui.backend.deinit();
+
+    while (!window.shouldClose() and window.getKey(.escape) != .press) {
+        glfw.pollEvents();
+
+        gl.clearBufferfv(gl.COLOR, 0, &[_]f32{ 0, 0, 0, 1.0 });
+
+        const fb_size = window.getFramebufferSize();
+
+        zgui.backend.newFrame(
+            @intCast(fb_size[0]),
+            @intCast(fb_size[1]),
+        );
+
+        zgui.setNextWindowPos(.{ .x = 20.0, .y = 20.0, .cond = .first_use_ever });
+        zgui.setNextWindowSize(.{ .w = -1.0, .h = -1.0, .cond = .first_use_ever });
+
+        if (zgui.begin("My window", .{})) {
+            if (zgui.button("Press me!", .{ .w = 200.0 })) {
+                root_logger.info("Button pressed", .{});
+            }
+        }
+        zgui.end();
+
+        zgui.backend.draw();
+
+        window.swapBuffers();
+    }
 
     var opt = try simargs.parse(allocator, Args, "FILES...", null);
     defer opt.deinit();
@@ -68,12 +142,12 @@ pub fn main() !void {
     for (opt.positional_args.items, 0..) |arg, idx| {
         const abs_dir = if (std.fs.path.isAbsolute(arg)) a: {
             break :a std.fs.openDirAbsolute(arg, .{}) catch |err| {
-                root_logger.err("{!}: {s}\n", .{ @errorName(err), arg });
+                root_logger.err("{!s}: {s}\n", .{ @errorName(err), arg });
                 std.process.exit(1);
             };
         } else b: {
             break :b std.fs.cwd().openDir(arg, .{}) catch |err| {
-                root_logger.err("{!}: {s}\n", .{ @errorName(err), arg });
+                root_logger.err("{!s}: {s}\n", .{ @errorName(err), arg });
                 std.process.exit(1);
             };
         };
@@ -116,7 +190,7 @@ pub fn main() !void {
         output_file_name = try std.mem.concat(allocator, u8, &[_][]const u8{ output_file_name, ".req" });
     }
     const output_file = std.fs.cwd().createFile(output_file_name, .{}) catch |err| {
-        root_logger.err("{!}: {s}\n", .{ @errorName(err), output_file_name });
+        root_logger.err("{!s}: {s}\n", .{ @errorName(err), output_file_name });
         std.process.exit(1);
     };
     const file_writer = output_file.writer();
