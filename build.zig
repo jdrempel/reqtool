@@ -25,15 +25,15 @@ pub fn build(b: *std.Build) void {
     const simargs = b.addModule("simargs", .{ .root_source_file = .{ .path = "dep/zigcli/src/mod/simargs.zig" } });
     exe.root_module.addImport("simargs", simargs);
 
-    const zgui = b.dependency("zgui", .{
-        .shared = false,
-        .with_implot = true,
-        .backend = .glfw_opengl3,
-    });
-    exe.root_module.addImport("zgui", zgui.module("root"));
-    exe.linkLibrary(zgui.artifact("imgui"));
-
     {
+        const zgui = b.dependency("zgui", .{
+            .shared = false,
+            .with_implot = true,
+            .backend = .glfw_opengl3,
+        });
+        exe.root_module.addImport("zgui", zgui.module("root"));
+        exe.linkLibrary(zgui.artifact("imgui"));
+
         const zglfw = b.dependency("zglfw", .{});
         exe.root_module.addImport("zglfw", zglfw.module("root"));
         exe.linkLibrary(zglfw.artifact("glfw"));
@@ -50,7 +50,6 @@ pub fn build(b: *std.Build) void {
             .target = target,
         });
         exe.root_module.addImport("zgpu", zgpu.module("root"));
-        exe.linkLibrary(zgpu.artifact("zdawn"));
     }
 
     // This declares intent for the executable to be installed into the

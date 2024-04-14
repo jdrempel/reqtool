@@ -34,6 +34,7 @@ files inside sub-directories will not be considered).
 - [ ] Basic GUI
 
 ## Compiling from Source
-1. Install `zig` on your computer; version `0.12.0-dev.2154` or newer is required
+1. Install `zig` on your computer; version `0.12.0-dev.2154` ~~or newer~~ is required (GUI dependencies start to break 
+   with 3631; in the future I will try to figure out a proper solution)
 2. Clone this repository: `git clone https://github.com/jdrempel/reqtool.git`
 3. From within the repository root (`cd reqtool`) run `zig build -Doptimize=ReleaseSafe`
