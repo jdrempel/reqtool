@@ -205,11 +205,13 @@ fn runGuiMode(allocator: std.mem.Allocator, opt: anytype) !void {
     var current_dir = std.fs.cwd();
     try loadDirectory(
         allocator,
-        current_dir,
         ".",
         &selection_data,
         &current_dir,
     );
+
+    const browse_path = try allocator.allocSentinel(u8, 4096, 0);
+    @memset(browse_path[0..4096], 0);
 
     while (!window.shouldClose() and window.getKey(.escape) != .press) {
         glfw.pollEvents();
@@ -241,18 +243,23 @@ fn runGuiMode(allocator: std.mem.Allocator, opt: anytype) !void {
             if (zgui.button("Go up", .{})) {
                 try loadDirectory(
                     allocator,
-                    current_dir,
                     "..",
                     &selection_data,
                     &current_dir,
                 );
             }
             zgui.sameLine(.{ .spacing = 50.0 });
-            var browse_path = [_:0]u8{0} ** 4096;
-            _ = zgui.inputTextWithHint("##Browse", .{ .hint = "Navigate to a specific path", .buf = &browse_path });
+            if (zgui.inputTextWithHint("##Browse", .{ .hint = "Navigate to an absolute path", .buf = browse_path })) {}
             zgui.sameLine(.{});
-            if (zgui.button("Go", .{})) {}
-            if (zgui.beginListBox("File Select", .{ .w = -1.0, .h = -1.0 })) {
+            if (zgui.button("Go", .{})) {
+                var val: []u8 = undefined;
+                var stream = std.io.fixedBufferStream(browse_path);
+                const reader = stream.reader();
+                val = try reader.readUntilDelimiterAlloc(allocator, 0, 4096);
+                root_logger.info("Abs path: {s}", .{val});
+                try loadDirectoryAbsolute(allocator, val, &selection_data, &current_dir);
+            }
+            if (zgui.beginListBox("##FileSelect", .{ .w = -1.0, .h = -1.0 })) {
                 for (selection_data.items) |item| {
                     const prefix = switch (item.kind) {
                         .directory => "[D] ",
@@ -277,7 +284,6 @@ fn runGuiMode(allocator: std.mem.Allocator, opt: anytype) !void {
                         if (zgui.isMouseDoubleClicked(.left)) {
                             loadDirectory(
                                 allocator,
-                                current_dir,
                                 item.name,
                                 &selection_data,
                                 &current_dir,
@@ -294,6 +300,7 @@ fn runGuiMode(allocator: std.mem.Allocator, opt: anytype) !void {
                 }
                 zgui.endListBox();
             }
+            if (zgui.button("Generate REQ", .{})) {}
             zgui.end();
         }
 
@@ -323,14 +330,33 @@ fn runGuiMode(allocator: std.mem.Allocator, opt: anytype) !void {
 
 fn loadDirectory(
     allocator: std.mem.Allocator,
-    base: ?std.fs.Dir,
     path: []const u8,
     selection_data: *std.ArrayList(EntryData),
     current_dir: *std.fs.Dir,
 ) !void {
-    const dir = try (base orelse std.fs.cwd()).openDir(path, .{ .iterate = true });
+    const dir = try current_dir.*.openDir(path, .{ .iterate = true });
     selection_data.*.clearAndFree();
     current_dir.* = dir;
+    try _loadDirectoryImpl(dir, allocator, selection_data);
+}
+
+fn loadDirectoryAbsolute(
+    allocator: std.mem.Allocator,
+    path: []const u8,
+    selection_data: *std.ArrayList(EntryData),
+    current_dir: *std.fs.Dir,
+) !void {
+    const dir = try std.fs.openDirAbsolute(path, .{ .iterate = true });
+    selection_data.*.clearAndFree();
+    current_dir.* = dir;
+    try _loadDirectoryImpl(dir, allocator, selection_data);
+}
+
+fn _loadDirectoryImpl(
+    dir: std.fs.Dir,
+    allocator: std.mem.Allocator,
+    selection_data: *std.ArrayList(EntryData),
+) !void {
     var it: std.fs.Dir.Iterator = dir.iterate();
     var current = it.next() catch null;
     while (current) |entry| {
