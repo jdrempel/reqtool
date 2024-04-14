@@ -202,16 +202,16 @@ fn runGuiMode(allocator: std.mem.Allocator, opt: anytype) !void {
     var selection_data = std.ArrayList(EntryData).init(allocator);
     defer selection_data.deinit();
 
+    const browse_path = try allocator.allocSentinel(u8, 4096, 0);
+
     var current_dir = std.fs.cwd();
     try loadDirectory(
         allocator,
         ".",
         &selection_data,
         &current_dir,
+        browse_path,
     );
-
-    const browse_path = try allocator.allocSentinel(u8, 4096, 0);
-    @memset(browse_path[0..4096], 0);
 
     while (!window.shouldClose() and window.getKey(.escape) != .press) {
         glfw.pollEvents();
@@ -246,6 +246,7 @@ fn runGuiMode(allocator: std.mem.Allocator, opt: anytype) !void {
                     "..",
                     &selection_data,
                     &current_dir,
+                    browse_path,
                 );
             }
             zgui.sameLine(.{ .spacing = 50.0 });
@@ -256,8 +257,14 @@ fn runGuiMode(allocator: std.mem.Allocator, opt: anytype) !void {
                 var stream = std.io.fixedBufferStream(browse_path);
                 const reader = stream.reader();
                 val = try reader.readUntilDelimiterAlloc(allocator, 0, 4096);
-                root_logger.info("Abs path: {s}", .{val});
-                try loadDirectoryAbsolute(allocator, val, &selection_data, &current_dir);
+                root_logger.debug("Abs path: {s}", .{val});
+                try loadDirectoryAbsolute(
+                    allocator,
+                    val,
+                    &selection_data,
+                    &current_dir,
+                    browse_path,
+                );
             }
             if (zgui.beginListBox("##FileSelect", .{ .w = -1.0, .h = -1.0 })) {
                 for (selection_data.items) |item| {
@@ -282,18 +289,13 @@ fn runGuiMode(allocator: std.mem.Allocator, opt: anytype) !void {
                         .flags = selectable_flags,
                     })) {
                         if (zgui.isMouseDoubleClicked(.left)) {
-                            loadDirectory(
+                            try loadDirectory(
                                 allocator,
                                 item.name,
                                 &selection_data,
                                 &current_dir,
-                            ) catch |err| switch (err) {
-                                std.fs.Dir.OpenError.FileNotFound => root_logger.err("Base: {s}\nPath: {s}", .{
-                                    try current_dir.realpathAlloc(allocator, "."),
-                                    item.name,
-                                }),
-                                else => return err,
-                            };
+                                browse_path,
+                            );
                             break;
                         }
                     }
@@ -333,8 +335,12 @@ fn loadDirectory(
     path: []const u8,
     selection_data: *std.ArrayList(EntryData),
     current_dir: *std.fs.Dir,
+    browse_path: [:0]u8,
 ) !void {
     const dir = try current_dir.*.openDir(path, .{ .iterate = true });
+    @memset(browse_path[0..4096], 0);
+    const new_browse_path = try dir.realpathAlloc(allocator, ".");
+    std.mem.copyForwards(u8, browse_path, new_browse_path);
     selection_data.*.clearAndFree();
     current_dir.* = dir;
     try _loadDirectoryImpl(dir, allocator, selection_data);
@@ -345,8 +351,12 @@ fn loadDirectoryAbsolute(
     path: []const u8,
     selection_data: *std.ArrayList(EntryData),
     current_dir: *std.fs.Dir,
+    browse_path: [:0]u8,
 ) !void {
     const dir = try std.fs.openDirAbsolute(path, .{ .iterate = true });
+    @memset(browse_path[0..4096], 0);
+    const new_browse_path = try dir.realpathAlloc(allocator, ".");
+    std.mem.copyForwards(u8, browse_path, new_browse_path);
     selection_data.*.clearAndFree();
     current_dir.* = dir;
     try _loadDirectoryImpl(dir, allocator, selection_data);
