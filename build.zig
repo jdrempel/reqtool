@@ -3,7 +3,7 @@ const std = @import("std");
 // Although this function looks imperative, note that its job is to
 // declaratively construct a build graph that will be executed by an external
 // runner.
-pub fn build(b: *std.Build) void {
+pub fn build(b: *std.Build) !void {
     // Standard target options allows the person running `zig build` to choose
     // what target to build for. Here we do not override the defaults, which
     // means any target is allowed, and the default is native. Other options
@@ -21,6 +21,27 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+
+    const arch_name = if (target.query.cpu_arch) |arch| @tagName(arch) else "native";
+    const os_name = if (target.query.os_tag) |os_tag| @tagName(os_tag) else "native";
+    const options = .{
+        .version = b.option(
+            []const u8,
+            "release_version",
+            "The semver name for the release this build is part of",
+        ) orelse "0.0.0",
+        .platform = b.option(
+            []const u8,
+            "platform",
+            "The name of the platform for which this build was released",
+        ) orelse try std.mem.concat(b.allocator, u8, &[_][:0]const u8{ arch_name, "-", os_name }),
+    };
+    const options_step = b.addOptions();
+    inline for (std.meta.fields(@TypeOf(options))) |field| {
+        options_step.addOption(field.type, field.name, @field(options, field.name));
+    }
+    const options_module = options_step.createModule();
+    exe.root_module.addImport("build_options", options_module);
 
     const simargs = b.addModule("simargs", .{ .root_source_file = .{ .path = "dep/zigcli/src/mod/simargs.zig" } });
     exe.root_module.addImport("simargs", simargs);

@@ -126,6 +126,7 @@ pub const ReqDatabase = struct {
 
     fn addEntryImpl(self: *Self, section_name: []const u8, entry: []const u8) !void {
         const entry_name = try util.path.stem(entry, self.allocator);
+        if (entry_name.len == 0) return;
         if (self.sections.getPtr(section_name)) |section| {
             // TODO this is O(n) for performance, eventually I'd like to just store a HashMap of string:null
             for (section.*.items) |existing_item| {

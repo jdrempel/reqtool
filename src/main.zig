@@ -8,6 +8,7 @@ const zopengl = @import("zopengl");
 const wgpu = zgpu.wgpu;
 const zgui = @import("zgui");
 
+const build_options = @import("build_options");
 const util = @import("util/root.zig");
 const ReqDatabase = @import("writer.zig").ReqDatabase;
 const FileTypes = @import("writer.zig").FileTypes;
@@ -66,6 +67,17 @@ const root_logger = std.log.scoped(.root);
 const gl_major = 4;
 const gl_minor = 0;
 const window_title = "reqtool";
+var context: *ReqToolContext = undefined;
+var about_menu_open = false;
+const about_menu_text =
+    \\reqtool
+    \\
+    \\{s} ({s})
+    \\
+    \\Author: jedimoose32
+    \\Repository: {s}
+    \\License: {s}
+;
 
 //-------- LOGGING --------//
 pub const std_options = struct {
@@ -209,6 +221,7 @@ fn runGuiMode(allocator: std.mem.Allocator, opt: anytype) !void {
     defer selection_data.deinit();
 
     var browse_path = try allocator.allocSentinel(u8, 4096, 0);
+    defer allocator.free(browse_path);
 
     // Hacks! parse_odfs has to be a var but isn't mutated outside of opaque C code
     //  so we just double-not it. :)
@@ -217,7 +230,9 @@ fn runGuiMode(allocator: std.mem.Allocator, opt: anytype) !void {
 
     var current_dir = std.fs.cwd();
 
-    var context = ReqToolContext{
+    context = try allocator.create(ReqToolContext);
+    defer allocator.destroy(context);
+    context.* = ReqToolContext{
         .selection_data = &selection_data,
         .browse_path = &browse_path,
         .parse_odfs = parse_odfs,
@@ -225,57 +240,42 @@ fn runGuiMode(allocator: std.mem.Allocator, opt: anytype) !void {
         .current_dir = &current_dir,
     };
 
-    try loadDirectory(
-        allocator,
-        ".",
-        &context,
-    );
+    try loadDirectory(allocator, ".");
 
     while (!window.shouldClose()) {
         setupNewFrame(&gl, &window);
 
         showMainMenuBar();
-        try showMainWindow(allocator, &context);
-        try showOptionsWindow(allocator, &context);
+        showAboutModal();
+        try showMainWindow(allocator);
+        try showOptionsWindow(allocator);
 
         zgui.backend.draw();
         window.swapBuffers();
     }
 }
 
-fn loadDirectory(
-    allocator: std.mem.Allocator,
-    path: []const u8,
-    context: *ReqToolContext,
-) !void {
+fn loadDirectory(allocator: std.mem.Allocator, path: []const u8) !void {
     const dir = try context.*.current_dir.*.openDir(path, .{ .iterate = true });
     @memset(context.*.browse_path.*[0..4096], 0);
     const new_browse_path = try dir.realpathAlloc(allocator, ".");
     std.mem.copyForwards(u8, context.*.browse_path.*, new_browse_path);
     context.*.selection_data.*.clearAndFree();
     context.*.current_dir.* = dir;
-    try _loadDirectoryImpl(allocator, dir, context);
+    try _loadDirectoryImpl(allocator, dir);
 }
 
-fn loadDirectoryAbsolute(
-    allocator: std.mem.Allocator,
-    path: []const u8,
-    context: *ReqToolContext,
-) !void {
+fn loadDirectoryAbsolute(allocator: std.mem.Allocator, path: []const u8) !void {
     const dir = try std.fs.openDirAbsolute(path, .{ .iterate = true });
     @memset(context.*.browse_path.*[0..4096], 0);
     const new_browse_path = try dir.realpathAlloc(allocator, ".");
     std.mem.copyForwards(u8, context.*.browse_path.*, new_browse_path);
     context.*.selection_data.*.clearAndFree();
     context.*.current_dir.* = dir;
-    try _loadDirectoryImpl(allocator, dir, context);
+    try _loadDirectoryImpl(allocator, dir);
 }
 
-fn _loadDirectoryImpl(
-    allocator: std.mem.Allocator,
-    dir: std.fs.Dir,
-    context: *ReqToolContext,
-) !void {
+fn _loadDirectoryImpl(allocator: std.mem.Allocator, dir: std.fs.Dir) !void {
     var it: std.fs.Dir.Iterator = dir.iterate();
     var current = it.next() catch null;
     while (current) |entry| : (current = it.next() catch null) {
@@ -295,12 +295,12 @@ fn _loadDirectoryImpl(
             .kind = entry.kind,
         });
     }
-    std.sort.pdq(EntryData, context.*.selection_data.*.items, {}, struct {
+    std.sort.insertion(EntryData, context.*.selection_data.*.items, {}, struct {
         fn lt(_: void, l: EntryData, r: EntryData) bool {
             return l.kindLessThan(r);
         }
     }.lt);
-    std.sort.pdq(EntryData, context.*.selection_data.*.items, {}, struct {
+    std.sort.insertion(EntryData, context.*.selection_data.*.items, {}, struct {
         fn lt(_: void, l: EntryData, r: EntryData) bool {
             return std.ascii.lessThanIgnoreCase(l.name, r.name) and l.kindLessThan(r);
         }
@@ -321,7 +321,12 @@ fn setAllSelected(val: bool, selection_data: *std.ArrayList(EntryData)) void {
     }
 }
 
-fn generateReqFile(allocator: std.mem.Allocator, options: anytype, files: StrArrayList, output_file_name: []const u8) !void {
+fn generateReqFile(
+    allocator: std.mem.Allocator,
+    options: anytype,
+    files: StrArrayList,
+    output_file_name: []const u8,
+) !void {
     var db = ReqDatabase.init(allocator, options);
 
     for (files.items) |file_path| {
@@ -358,18 +363,50 @@ fn setupNewFrame(gl_ptr: anytype, window_ptr: *const *glfw.Window) void {
 fn showMainMenuBar() void {
     if (zgui.beginMainMenuBar()) {
         if (zgui.beginMenu("File", true)) {
-            if (zgui.menuItem("Quit", .{})) {}
+            if (zgui.menuItem("Quit", .{})) {
+                std.process.exit(0);
+            }
             zgui.endMenu();
         }
         if (zgui.beginMenu("Help", true)) {
-            if (zgui.menuItem("About...", .{})) {}
+            if (zgui.menuItem("About...", .{})) {
+                about_menu_open = true;
+            }
             zgui.endMenu();
         }
         zgui.endMainMenuBar();
     }
 }
 
-fn showMainWindow(allocator: std.mem.Allocator, context: *ReqToolContext) !void {
+fn showAboutModal() void {
+    if (about_menu_open) {
+        zgui.openPopup("About reqtool", .{});
+    }
+    const center = zgui.getMainViewport().getCenter();
+    zgui.setNextWindowPos(.{
+        .x = center[0],
+        .y = center[1],
+        .cond = .always,
+        .pivot_x = 0.5,
+        .pivot_y = 0.5,
+    });
+    if (zgui.beginPopupModal("About reqtool", .{ .flags = .{ .always_auto_resize = true } })) {
+        zgui.text(about_menu_text, .{
+            build_options.version,
+            build_options.platform,
+            "https://github.com/jdrempel/reqtool",
+            "<license>",
+        });
+        zgui.setItemDefaultFocus();
+        if (zgui.button("Close", .{ .w = -1.0 })) {
+            about_menu_open = false;
+            zgui.closeCurrentPopup();
+        }
+        zgui.endPopup();
+    }
+}
+
+fn showMainWindow(allocator: std.mem.Allocator) !void {
     const main_viewport = zgui.getMainViewport();
     const main_viewport_size = main_viewport.getWorkSize();
     const main_viewport_pos = main_viewport.getWorkPos();
@@ -395,14 +432,16 @@ fn showMainWindow(allocator: std.mem.Allocator, context: *ReqToolContext) !void 
         },
     })) {
         if (zgui.button("Go up", .{})) {
-            try loadDirectory(
-                allocator,
-                "..",
-                context,
-            );
+            try loadDirectory(allocator, "..");
         }
         zgui.sameLine(.{ .spacing = 50.0 });
-        if (zgui.inputTextWithHint("##Browse", .{ .hint = "Navigate to an absolute path", .buf = context.*.browse_path.* })) {}
+        _ = zgui.inputTextWithHint(
+            "##Browse",
+            .{
+                .hint = "Navigate to an absolute path",
+                .buf = context.*.browse_path.*,
+            },
+        );
         zgui.sameLine(.{});
         if (zgui.button("Go", .{})) {
             var val: []u8 = undefined;
@@ -410,11 +449,7 @@ fn showMainWindow(allocator: std.mem.Allocator, context: *ReqToolContext) !void 
             const reader = stream.reader();
             val = try reader.readUntilDelimiterAlloc(allocator, 0, 4096);
             root_logger.debug("Abs path: {s}", .{val});
-            try loadDirectoryAbsolute(
-                allocator,
-                val,
-                context,
-            );
+            try loadDirectoryAbsolute(allocator, val);
         }
         if (zgui.beginListBox("##FileSelect", .{ .w = -1.0, .h = -100.0 })) {
             for (context.*.selection_data.items) |item| {
@@ -439,11 +474,7 @@ fn showMainWindow(allocator: std.mem.Allocator, context: *ReqToolContext) !void 
                     .flags = selectable_flags,
                 })) {
                     if (zgui.isMouseDoubleClicked(.left)) {
-                        try loadDirectory(
-                            allocator,
-                            item.name,
-                            context,
-                        );
+                        try loadDirectory(allocator, item.name);
                         break;
                     }
                 }
@@ -484,7 +515,7 @@ fn showMainWindow(allocator: std.mem.Allocator, context: *ReqToolContext) !void 
     }
 }
 
-fn showOptionsWindow(allocator: std.mem.Allocator, context: *ReqToolContext) !void {
+fn showOptionsWindow(allocator: std.mem.Allocator) !void {
     const main_viewport = zgui.getMainViewport();
     const main_viewport_size = main_viewport.getWorkSize();
     const main_viewport_pos = main_viewport.getWorkPos();
@@ -500,7 +531,7 @@ fn showOptionsWindow(allocator: std.mem.Allocator, context: *ReqToolContext) !vo
         .cond = .always,
     });
 
-    if (zgui.begin("Your window", .{
+    if (zgui.begin("##Options", .{
         .flags = .{
             .no_title_bar = true,
             .no_resize = true,
@@ -512,11 +543,7 @@ fn showOptionsWindow(allocator: std.mem.Allocator, context: *ReqToolContext) !vo
         zgui.text("Options", .{});
         zgui.separator();
         if (zgui.checkbox("Show unrecognized file types", .{ .v = &(context.*.show_all_file_types) })) {
-            try loadDirectory(
-                allocator,
-                ".",
-                context,
-            );
+            try loadDirectory(allocator, ".");
         }
         _ = zgui.checkbox("Parse ODF files", .{ .v = &(context.*.parse_odfs) });
         zgui.end();
