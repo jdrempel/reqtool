@@ -1,3 +1,4 @@
+//-------- IMPORTS --------//
 const std = @import("std");
 const simargs = @import("simargs");
 
@@ -7,40 +8,11 @@ const zopengl = @import("zopengl");
 const wgpu = zgpu.wgpu;
 const zgui = @import("zgui");
 
-const gl_major = 4;
-const gl_minor = 0;
-const window_title = "reqtool";
-
 const util = @import("util/root.zig");
 const ReqDatabase = @import("writer.zig").ReqDatabase;
 const FileTypes = @import("writer.zig").FileTypes;
 
-pub const std_options = struct {
-    pub const log_level = .info;
-    pub const logFn = stdLog;
-};
-fn stdLog(
-    comptime level: std.log.Level,
-    comptime scope: @TypeOf(.EnumLiteral),
-    comptime format: []const u8,
-    args: anytype,
-) void {
-    const scope_prefix = "(" ++ switch (scope) {
-        .root, .parser, .writer, std.log.default_log_scope => @tagName(scope),
-        else => if (@intFromEnum(level) <= @intFromEnum(std.log.Level.err))
-            @tagName(scope)
-        else
-            return,
-    } ++ "):\t";
-
-    const prefix = "[" ++ comptime level.asText() ++ "] " ++ scope_prefix;
-
-    std.debug.getStderrMutex().lock();
-    defer std.debug.getStderrMutex().unlock();
-    const stderr = std.io.getStdErr().writer();
-    nosuspend stderr.print(prefix ++ format ++ "\n", args) catch return;
-}
-
+//-------- TYPES --------//
 const StrArrayList = std.ArrayList([]const u8);
 
 const Args = struct {
@@ -90,6 +62,39 @@ const ReqToolContext = struct {
 
 const root_logger = std.log.scoped(.root);
 
+//-------- STATIC CONSTANTS --------//
+const gl_major = 4;
+const gl_minor = 0;
+const window_title = "reqtool";
+
+//-------- LOGGING --------//
+pub const std_options = struct {
+    pub const log_level = .info;
+    pub const logFn = stdLog;
+};
+fn stdLog(
+    comptime level: std.log.Level,
+    comptime scope: @TypeOf(.EnumLiteral),
+    comptime format: []const u8,
+    args: anytype,
+) void {
+    const scope_prefix = "(" ++ switch (scope) {
+        .root, .parser, .writer, std.log.default_log_scope => @tagName(scope),
+        else => if (@intFromEnum(level) <= @intFromEnum(std.log.Level.err))
+            @tagName(scope)
+        else
+            return,
+    } ++ "):\t";
+
+    const prefix = "[" ++ comptime level.asText() ++ "] " ++ scope_prefix;
+
+    std.debug.getStderrMutex().lock();
+    defer std.debug.getStderrMutex().unlock();
+    const stderr = std.io.getStdErr().writer();
+    nosuspend stderr.print(prefix ++ format ++ "\n", args) catch return;
+}
+
+//-------- CODE :) --------//
 pub fn main() !void {
     root_logger.info("Starting reqtool", .{});
 
@@ -223,9 +228,6 @@ fn runGuiMode(allocator: std.mem.Allocator, opt: anytype) !void {
     try loadDirectory(
         allocator,
         ".",
-        &selection_data,
-        &current_dir,
-        browse_path,
         &context,
     );
 
@@ -244,48 +246,41 @@ fn runGuiMode(allocator: std.mem.Allocator, opt: anytype) !void {
 fn loadDirectory(
     allocator: std.mem.Allocator,
     path: []const u8,
-    selection_data: *std.ArrayList(EntryData),
-    current_dir: *std.fs.Dir,
-    browse_path: [:0]u8,
     context: *ReqToolContext,
 ) !void {
-    const dir = try current_dir.*.openDir(path, .{ .iterate = true });
-    @memset(browse_path[0..4096], 0);
+    const dir = try context.*.current_dir.*.openDir(path, .{ .iterate = true });
+    @memset(context.*.browse_path.*[0..4096], 0);
     const new_browse_path = try dir.realpathAlloc(allocator, ".");
-    std.mem.copyForwards(u8, browse_path, new_browse_path);
-    selection_data.*.clearAndFree();
-    current_dir.* = dir;
-    try _loadDirectoryImpl(dir, allocator, selection_data, context);
+    std.mem.copyForwards(u8, context.*.browse_path.*, new_browse_path);
+    context.*.selection_data.*.clearAndFree();
+    context.*.current_dir.* = dir;
+    try _loadDirectoryImpl(allocator, dir, context);
 }
 
 fn loadDirectoryAbsolute(
     allocator: std.mem.Allocator,
     path: []const u8,
-    selection_data: *std.ArrayList(EntryData),
-    current_dir: *std.fs.Dir,
-    browse_path: [:0]u8,
     context: *ReqToolContext,
 ) !void {
     const dir = try std.fs.openDirAbsolute(path, .{ .iterate = true });
-    @memset(browse_path[0..4096], 0);
+    @memset(context.*.browse_path.*[0..4096], 0);
     const new_browse_path = try dir.realpathAlloc(allocator, ".");
-    std.mem.copyForwards(u8, browse_path, new_browse_path);
-    selection_data.*.clearAndFree();
-    current_dir.* = dir;
-    try _loadDirectoryImpl(dir, allocator, selection_data, context);
+    std.mem.copyForwards(u8, context.*.browse_path.*, new_browse_path);
+    context.*.selection_data.*.clearAndFree();
+    context.*.current_dir.* = dir;
+    try _loadDirectoryImpl(allocator, dir, context);
 }
 
 fn _loadDirectoryImpl(
-    dir: std.fs.Dir,
     allocator: std.mem.Allocator,
-    selection_data: *std.ArrayList(EntryData),
+    dir: std.fs.Dir,
     context: *ReqToolContext,
 ) !void {
     var it: std.fs.Dir.Iterator = dir.iterate();
     var current = it.next() catch null;
     while (current) |entry| : (current = it.next() catch null) {
         if (entry.kind != .directory) {
-            const extension = try util.path.extension(entry.name, allocator);
+            const extension = try util.path.extension(allocator, entry.name);
             const file_type = std.meta.stringToEnum(FileTypes, extension) orelse .__unknown__;
             if (file_type == .__unknown__ and context.*.show_all_file_types == false) {
                 continue;
@@ -294,18 +289,18 @@ fn _loadDirectoryImpl(
         const entry_name = try allocator.allocSentinel(u8, entry.name.len, 0);
         std.mem.copyForwards(u8, entry_name, entry.name);
         const b = try allocator.create(bool);
-        try selection_data.*.append(.{
+        try context.*.selection_data.*.append(.{
             .name = entry_name,
             .selected = b,
             .kind = entry.kind,
         });
     }
-    std.sort.pdq(EntryData, selection_data.*.items, {}, struct {
+    std.sort.pdq(EntryData, context.*.selection_data.*.items, {}, struct {
         fn lt(_: void, l: EntryData, r: EntryData) bool {
             return l.kindLessThan(r);
         }
     }.lt);
-    std.sort.pdq(EntryData, selection_data.*.items, {}, struct {
+    std.sort.pdq(EntryData, context.*.selection_data.*.items, {}, struct {
         fn lt(_: void, l: EntryData, r: EntryData) bool {
             return std.ascii.lessThanIgnoreCase(l.name, r.name) and l.kindLessThan(r);
         }
@@ -403,9 +398,6 @@ fn showMainWindow(allocator: std.mem.Allocator, context: *ReqToolContext) !void 
             try loadDirectory(
                 allocator,
                 "..",
-                context.*.selection_data,
-                context.*.current_dir,
-                context.*.browse_path.*,
                 context,
             );
         }
@@ -421,9 +413,6 @@ fn showMainWindow(allocator: std.mem.Allocator, context: *ReqToolContext) !void 
             try loadDirectoryAbsolute(
                 allocator,
                 val,
-                context.*.selection_data,
-                context.*.current_dir,
-                context.*.browse_path.*,
                 context,
             );
         }
@@ -453,9 +442,6 @@ fn showMainWindow(allocator: std.mem.Allocator, context: *ReqToolContext) !void 
                         try loadDirectory(
                             allocator,
                             item.name,
-                            context.*.selection_data,
-                            context.*.current_dir,
-                            context.*.browse_path.*,
                             context,
                         );
                         break;
@@ -529,9 +515,6 @@ fn showOptionsWindow(allocator: std.mem.Allocator, context: *ReqToolContext) !vo
             try loadDirectory(
                 allocator,
                 ".",
-                context.*.selection_data,
-                context.*.current_dir,
-                context.*.browse_path.*,
                 context,
             );
         }

@@ -78,7 +78,7 @@ pub const ReqDatabase = struct {
     }
 
     pub fn addEntry(self: *Self, entry: []const u8) !void {
-        const extension = try util.path.extension(entry, self.allocator);
+        const extension = try util.path.extension(self.allocator, entry);
         const file_type = std.meta.stringToEnum(FileTypes, extension) orelse .__unknown__;
 
         const section_type: Sections = switch (file_type) {
