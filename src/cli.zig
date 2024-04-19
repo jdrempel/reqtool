@@ -15,20 +15,19 @@ pub fn run(allocator: std.mem.Allocator, opt: anytype) !void {
     defer files.deinit();
 
     for (opt.positional_args.items, 0..) |arg, idx| {
-        const abs_dir = if (std.fs.path.isAbsolute(arg)) a: {
-            break :a std.fs.openDirAbsolute(arg, .{}) catch |err| {
+        const abs_dir = if (std.fs.path.isAbsolute(arg)) abs_dir: {
+            break :abs_dir std.fs.openDirAbsolute(arg, .{}) catch |err| {
                 root_logger.err("{!s}: Could not open absolute dir {s}\n", .{ @errorName(err), arg });
                 std.process.exit(1);
             };
-        } else b: {
-            break :b std.fs.cwd().openDir(arg, .{}) catch |err| {
+        } else rel_dir: {
+            break :rel_dir std.fs.cwd().openDir(arg, .{}) catch |err| {
                 root_logger.err("{!s}: Could not open relative dir {s}\n", .{ @errorName(err), arg });
                 std.process.exit(1);
             };
         };
         const abs_dir_path = try abs_dir.realpathAlloc(allocator, ".");
-        const maybe_parent_name = std.fs.path.dirname(abs_dir_path);
-        if (maybe_parent_name) |parent_name| {
+        if (std.fs.path.dirname(abs_dir_path)) |parent_name| {
             var parent_dir = try std.fs.openDirAbsolute(parent_name, .{});
             defer parent_dir.close();
 
@@ -38,11 +37,14 @@ pub fn run(allocator: std.mem.Allocator, opt: anytype) !void {
                     const dir = try std.fs.openDirAbsolute(abs_dir_path, .{ .iterate = true });
                     var iter = dir.iterate();
                     while (try iter.next()) |entry| {
-                        if (entry.kind != std.fs.File.Kind.file) continue; // TODO what about PC/XBOX/PS2 platform dirs?
-                        const abs_file_path = try std.fs.path.join(allocator, &[_][]const u8{
-                            try dir.realpathAlloc(allocator, "."),
-                            entry.name,
-                        });
+                        if (entry.kind != .file) continue; // TODO what about PC/XBOX/PS2 platform dirs?
+                        const abs_file_path = try std.fs.path.join(
+                            allocator,
+                            &[_][]const u8{
+                                try dir.realpathAlloc(allocator, "."),
+                                entry.name,
+                            },
+                        );
                         try files.append(abs_file_path);
                     }
                 },

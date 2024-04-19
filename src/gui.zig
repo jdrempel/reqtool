@@ -136,78 +136,6 @@ pub fn run(allocator: std.mem.Allocator, opt: anytype) !void {
     }
 }
 
-fn loadDirectory(allocator: std.mem.Allocator, path: []const u8) !void {
-    const dir = try context.*.current_dir.*.openDir(path, .{ .iterate = true });
-    @memset(context.*.browse_path.*[0..4096], 0);
-    const new_browse_path = try dir.realpathAlloc(allocator, ".");
-    std.mem.copyForwards(u8, context.*.browse_path.*, new_browse_path);
-    context.*.selection_data.*.clearAndFree();
-    context.*.current_dir.* = dir;
-    try _loadDirectoryImpl(allocator, dir);
-}
-
-fn loadDirectoryAbsolute(allocator: std.mem.Allocator, path: []const u8) !void {
-    const dir = try std.fs.openDirAbsolute(path, .{ .iterate = true });
-    @memset(context.*.browse_path.*[0..4096], 0);
-    const new_browse_path = try dir.realpathAlloc(allocator, ".");
-    std.mem.copyForwards(u8, context.*.browse_path.*, new_browse_path);
-    context.*.selection_data.*.clearAndFree();
-    context.*.current_dir.* = dir;
-    try _loadDirectoryImpl(allocator, dir);
-}
-
-fn _loadDirectoryImpl(allocator: std.mem.Allocator, dir: std.fs.Dir) !void {
-    var it: std.fs.Dir.Iterator = dir.iterate();
-    var current = it.next() catch null;
-    while (current) |entry| : (current = it.next() catch null) {
-        if (entry.kind != .directory) {
-            const extension = try util.path.extension(allocator, entry.name);
-            const file_type = std.meta.stringToEnum(FileTypes, extension) orelse .__unknown__;
-            if (file_type == .__unknown__ and context.*.show_all_file_types == false) {
-                continue;
-            }
-        }
-        const entry_name = try allocator.allocSentinel(u8, entry.name.len, 0);
-        std.mem.copyForwards(u8, entry_name, entry.name);
-        const b = try allocator.create(bool);
-        try context.*.selection_data.*.append(.{
-            .name = entry_name,
-            .selected = b,
-            .kind = entry.kind,
-        });
-    }
-    std.sort.insertion(EntryData, context.*.selection_data.*.items, {}, struct {
-        fn lt(_: void, l: EntryData, r: EntryData) bool {
-            return l.kindLessThan(r);
-        }
-    }.lt);
-    std.sort.insertion(EntryData, context.*.selection_data.*.items, {}, struct {
-        fn lt(_: void, l: EntryData, r: EntryData) bool {
-            return std.ascii.lessThanIgnoreCase(l.name, r.name) and l.kindLessThan(r);
-        }
-    }.lt);
-}
-
-fn getNumSelected(selection_data: *std.ArrayList(EntryData)) u32 {
-    var count: u32 = 0;
-    for (selection_data.*.items) |item| {
-        count += if (item.selected.*) 1 else 0;
-    }
-    return count;
-}
-
-fn setAllSelected(val: bool, selection_data: *std.ArrayList(EntryData)) void {
-    for (selection_data.*.items) |item| {
-        item.selected.* = val;
-    }
-}
-
-fn setAllFilesSelected(val: bool, selection_data: *std.ArrayList(EntryData)) void {
-    for (selection_data.*.items) |item| {
-        item.selected.* = (item.kind == .file) and val;
-    }
-}
-
 fn setupNewFrame(gl_ptr: anytype, window_ptr: *const *glfw.Window) void {
     glfw.pollEvents();
 
@@ -295,7 +223,7 @@ fn showMainWindow(allocator: std.mem.Allocator) !void {
         if (zgui.button("Go up", .{})) {
             try loadDirectory(allocator, "..");
         }
-        zgui.sameLine(.{ .spacing = 50.0 });
+        zgui.sameLine(.{});
         _ = zgui.inputTextWithHint(
             "##Browse",
             .{
@@ -367,8 +295,30 @@ fn showMainWindow(allocator: std.mem.Allocator) !void {
                     trimmed_browse_path,
                     item.name,
                 });
+                defer allocator.free(full_path);
+
                 const real_path = try std.fs.realpathAlloc(allocator, full_path);
-                try files.append(real_path);
+                defer allocator.free(real_path);
+
+                if (item.kind == .file) {
+                    try files.append(real_path);
+                } else if (item.kind == .directory) {
+                    root_logger.debug("Iterating {s}", .{real_path});
+                    const dir = try std.fs.openDirAbsolute(real_path, .{ .iterate = true });
+                    var iter = dir.iterate();
+                    var current = try iter.next();
+                    while (current) |entry| : (current = try iter.next()) {
+                        if (entry.kind != .file) {
+                            root_logger.debug("Skipping {s} because it is not a file...", .{entry.name});
+                            continue;
+                        }
+                        if ((try util.path.extension(allocator, entry.name)).len == 0) {
+                            root_logger.debug("Skipping {s} because it has no extension...", .{entry.name});
+                            continue;
+                        }
+                        try files.append(try std.fs.path.join(allocator, &[_][]const u8{ real_path, entry.name }));
+                    }
+                }
             }
             try writer.generateReqFile(allocator, context.*, files, std.fs.path.basename(trimmed_browse_path));
         }
@@ -411,5 +361,77 @@ fn showOptionsWindow(allocator: std.mem.Allocator) !void {
         }
         _ = zgui.checkbox("Parse ODF files", .{ .v = &(context.*.parse_odfs) });
         zgui.end();
+    }
+}
+
+fn loadDirectory(allocator: std.mem.Allocator, path: []const u8) !void {
+    // Can't close the dir otherwise we end up with a panic situation
+    const dir = try context.*.current_dir.*.openDir(path, .{ .iterate = true });
+    try loadDirectoryImpl(allocator, dir);
+}
+
+fn loadDirectoryAbsolute(allocator: std.mem.Allocator, path: []const u8) !void {
+    // Can't close the dir otherwise we end up with a panic situation
+    const dir = try std.fs.openDirAbsolute(path, .{ .iterate = true });
+    try loadDirectoryImpl(allocator, dir);
+}
+
+fn loadDirectoryImpl(allocator: std.mem.Allocator, dir: std.fs.Dir) !void {
+    @memset(context.*.browse_path.*[0..4096], 0);
+    const new_browse_path = try dir.realpathAlloc(allocator, ".");
+    std.mem.copyForwards(u8, context.*.browse_path.*, new_browse_path);
+    context.*.selection_data.*.clearAndFree();
+    context.*.current_dir.* = dir;
+
+    var it: std.fs.Dir.Iterator = dir.iterate();
+    var current = it.next() catch null;
+    while (current) |entry| : (current = it.next() catch null) {
+        if (entry.kind != .directory) {
+            const extension = try util.path.extension(allocator, entry.name);
+            const file_type = std.meta.stringToEnum(FileTypes, extension) orelse .__unknown__;
+            if (file_type == .__unknown__ and context.*.show_all_file_types == false) {
+                continue;
+            }
+        }
+        const entry_name = try allocator.allocSentinel(u8, entry.name.len, 0);
+        std.mem.copyForwards(u8, entry_name, entry.name);
+        const b = try allocator.create(bool);
+        try context.*.selection_data.*.append(.{
+            .name = entry_name,
+            .selected = b,
+            .kind = entry.kind,
+        });
+    }
+    // Separate dirs and files
+    std.sort.insertion(EntryData, context.*.selection_data.*.items, {}, struct {
+        fn lt(_: void, l: EntryData, r: EntryData) bool {
+            return l.kindLessThan(r);
+        }
+    }.lt);
+    // Sort ascending alphabetically while preserving the dir/file separation from the last sort
+    std.sort.insertion(EntryData, context.*.selection_data.*.items, {}, struct {
+        fn lt(_: void, l: EntryData, r: EntryData) bool {
+            return std.ascii.lessThanIgnoreCase(l.name, r.name) and l.kindLessThan(r);
+        }
+    }.lt);
+}
+
+fn getNumSelected(selection_data: *std.ArrayList(EntryData)) u32 {
+    var count: u32 = 0;
+    for (selection_data.*.items) |item| {
+        count += if (item.selected.*) 1 else 0;
+    }
+    return count;
+}
+
+fn setAllSelected(val: bool, selection_data: *std.ArrayList(EntryData)) void {
+    for (selection_data.*.items) |item| {
+        item.selected.* = val;
+    }
+}
+
+fn setAllFilesSelected(val: bool, selection_data: *std.ArrayList(EntryData)) void {
+    for (selection_data.*.items) |item| {
+        item.selected.* = (item.kind == .file) and val;
     }
 }

@@ -79,6 +79,8 @@ const ReqDatabase = struct {
 
     pub fn addEntry(self: *Self, entry: []const u8) !void {
         const extension = try util.path.extension(self.allocator, entry);
+        defer self.allocator.free(extension);
+
         const file_type = std.meta.stringToEnum(FileTypes, extension) orelse .__unknown__;
 
         const section_type: Sections = switch (file_type) {
@@ -107,6 +109,7 @@ const ReqDatabase = struct {
             },
             .option => {
                 // Ignore .option files... if there are other types we should be ignoring, add them here
+                writer_logger.debug("Ignoring .option file {s}", .{entry});
                 return;
             },
             .pic, .tga => .texture,
@@ -185,6 +188,7 @@ pub fn generateReqFile(
     var db = ReqDatabase.init(allocator, options);
 
     for (files.items) |file_path| {
+        writer_logger.debug("Adding entry for {s}...", .{file_path});
         try db.addEntry(file_path);
     }
 
