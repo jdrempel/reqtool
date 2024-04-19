@@ -148,10 +148,25 @@ const ReqDatabase = struct {
         writer_logger.debug("Beginning req database write...", .{});
         try writer.writeAll("ucft\n{\n");
         var iter = self.sections.keyIterator();
+        var sections = StrArrayList.init(self.allocator);
+        defer sections.deinit();
         while (iter.next()) |section_name| {
+            try sections.append(section_name.*);
+        }
+        std.sort.insertion([]const u8, sections.items, {}, struct {
+            fn lt(_: void, l: []const u8, r: []const u8) bool {
+                return std.ascii.lessThanIgnoreCase(l, r);
+            }
+        }.lt);
+        for (sections.items) |section_name| {
             try writer.writeAll("\tREQN\n\t{\n");
-            try std.fmt.format(writer, "\t\t{!s}\n", .{self.quote(section_name.*)});
-            for (self.sections.get(section_name.*).?.items) |item| {
+            try std.fmt.format(writer, "\t\t{!s}\n", .{self.quote(section_name)});
+            std.sort.pdq([]const u8, self.sections.get(section_name).?.items, {}, struct {
+                fn lt(_: void, l: []const u8, r: []const u8) bool {
+                    return std.ascii.lessThanIgnoreCase(l, r);
+                }
+            }.lt);
+            for (self.sections.get(section_name).?.items) |item| {
                 try std.fmt.format(writer, "\t\t{!s}\n", .{self.quote(item)});
             }
             try writer.writeAll("\t}\n");
