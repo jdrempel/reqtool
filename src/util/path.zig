@@ -27,3 +27,9 @@ test "path stem" {
     try testing.expectEqualStrings("baz", try stem("/foo/bar/baz.c."));
     try testing.expectEqualStrings("baz", try stem("/foo/bar/baz.c./"));
 }
+
+pub fn extension(path: []const u8, allocator: std.mem.Allocator) ![]const u8 {
+    const raw_extension = std.fs.path.extension(path);
+    const lower_extension = try std.ascii.allocLowerString(allocator, raw_extension);
+    return std.mem.trimLeft(u8, lower_extension, ".");
+}

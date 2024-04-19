@@ -7,7 +7,7 @@ const writer_logger = std.log.scoped(.writer);
 
 const StrArrayList = std.ArrayList([]const u8);
 
-const FileTypes = enum {
+pub const FileTypes = enum {
     anm,
     bar,
     cfg,
@@ -78,9 +78,7 @@ pub const ReqDatabase = struct {
     }
 
     pub fn addEntry(self: *Self, entry: []const u8) !void {
-        const raw_extension = std.fs.path.extension(entry);
-        const lower_extension = try std.ascii.allocLowerString(self.allocator, raw_extension);
-        const extension = std.mem.trimLeft(u8, lower_extension, ".");
+        const extension = try util.path.extension(entry, self.allocator);
         const file_type = std.meta.stringToEnum(FileTypes, extension) orelse .__unknown__;
 
         const section_type: Sections = switch (file_type) {
