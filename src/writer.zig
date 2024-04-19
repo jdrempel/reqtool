@@ -64,7 +64,7 @@ const Sections = enum {
 
 pub const ReqDatabase = struct {
     allocator: std.mem.Allocator,
-    parse_odfs: ?bool = false,
+    parse_odfs: bool = false,
     sections: std.StringHashMap(StrArrayList),
 
     const Self = @This();
@@ -72,7 +72,7 @@ pub const ReqDatabase = struct {
     pub fn init(allocator: std.mem.Allocator, options: anytype) Self {
         return Self{
             .allocator = allocator,
-            .parse_odfs = options.args.@"parse-odfs",
+            .parse_odfs = options.parse_odfs,
             .sections = std.StringHashMap(StrArrayList).init(allocator),
         };
     }
@@ -94,7 +94,7 @@ pub const ReqDatabase = struct {
             .msh => .model,
             .odf => o: {
                 // Default: don't parse odfs
-                if (!self.parse_odfs.?) break :o .class;
+                if (!self.parse_odfs) break :o .class;
 
                 // Otherwise, parse each odf for dependencies and add them
                 var odf_parser = parser.OdfParser.init(self.allocator);
