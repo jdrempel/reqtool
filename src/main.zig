@@ -321,6 +321,12 @@ fn setAllSelected(val: bool, selection_data: *std.ArrayList(EntryData)) void {
     }
 }
 
+fn setAllFilesSelected(val: bool, selection_data: *std.ArrayList(EntryData)) void {
+    for (selection_data.*.items) |item| {
+        item.selected.* = (item.kind == .file) and val;
+    }
+}
+
 fn generateReqFile(
     allocator: std.mem.Allocator,
     options: anytype,
@@ -483,6 +489,10 @@ fn showMainWindow(allocator: std.mem.Allocator) !void {
         }
         if (zgui.button("Select all", .{})) {
             setAllSelected(true, context.*.selection_data);
+        }
+        zgui.sameLine(.{});
+        if (zgui.button("Select files", .{})) {
+            setAllFilesSelected(true, context.*.selection_data);
         }
         zgui.sameLine(.{});
         if (zgui.button("Select none", .{})) {
