@@ -62,7 +62,7 @@ const Sections = enum {
     world,
 };
 
-pub const ReqDatabase = struct {
+const ReqDatabase = struct {
     allocator: std.mem.Allocator,
     parse_odfs: bool = false,
     sections: std.StringHashMap(StrArrayList),
@@ -160,3 +160,29 @@ pub const ReqDatabase = struct {
         writer_logger.debug("Completed req database write", .{});
     }
 };
+
+pub fn generateReqFile(
+    allocator: std.mem.Allocator,
+    options: anytype,
+    files: StrArrayList,
+    output_file_name: []const u8,
+) !void {
+    var db = ReqDatabase.init(allocator, options);
+
+    for (files.items) |file_path| {
+        try db.addEntry(file_path);
+    }
+
+    const full_output_file_name = if (!std.mem.endsWith(u8, output_file_name, ".req")) fofn: {
+        break :fofn try std.mem.concat(allocator, u8, &[_][]const u8{ output_file_name, ".req" });
+    } else fofn: {
+        break :fofn output_file_name;
+    };
+    const output_file = std.fs.cwd().createFile(full_output_file_name, .{}) catch |err| {
+        writer_logger.err("{!s}: Unable to create file {s}\n", .{ @errorName(err), output_file_name });
+        std.process.exit(1);
+    };
+    const file_writer = output_file.writer();
+    writer_logger.info("Writing output to {s}", .{full_output_file_name});
+    try db.write(file_writer);
+}
