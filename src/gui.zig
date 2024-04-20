@@ -19,6 +19,7 @@ const EntryData = struct {
     name: [:0]const u8,
     selected: *bool,
     kind: std.fs.File.Kind,
+    file_type: FileTypes,
 
     const Self = @This();
     pub fn kindLessThan(self: *const Self, other: Self) bool {
@@ -224,20 +225,25 @@ fn showMainWindow(allocator: std.mem.Allocator) !void {
             try loadDirectory(allocator, "..");
         }
         zgui.sameLine(.{});
-        _ = zgui.inputTextWithHint(
+        if (zgui.inputTextWithHint(
             "##Browse",
             .{
                 .hint = "Navigate to an absolute path",
                 .buf = context.*.browse_path.*,
+                .flags = .{
+                    .enter_returns_true = true,
+                },
             },
-        );
+        )) {
+            loadAtBrowsePath(allocator) catch |err| {
+                root_logger.err("Cannot load path {s}: {s}", .{ context.*.browse_path.*, @errorName(err) });
+            };
+        }
         zgui.sameLine(.{});
         if (zgui.button("Go", .{})) {
-            var val: []u8 = undefined;
-            var stream = std.io.fixedBufferStream(context.*.browse_path.*);
-            const reader = stream.reader();
-            val = try reader.readUntilDelimiterAlloc(allocator, 0, 4096);
-            try loadDirectoryAbsolute(allocator, val);
+            loadAtBrowsePath(allocator) catch |err| {
+                root_logger.err("Cannot load path {s}: {s}", .{ context.*.browse_path.*, @errorName(err) });
+            };
         }
         if (zgui.beginListBox("##FileSelect", .{ .w = -1.0, .h = -100.0 })) {
             for (context.*.selection_data.items) |item| {
@@ -252,19 +258,42 @@ fn showMainWindow(allocator: std.mem.Allocator) !void {
                     &[_][]const u8{ prefix, item.name },
                     0,
                 );
+
                 const selectable_flags: zgui.SelectableFlags = switch (item.kind) {
                     .directory => .{ .allow_double_click = true, .allow_overlap = true },
                     .file => .{ .allow_overlap = true },
                     else => .{},
                 };
+
+                // Directories should be pale blue, unknown types should be red
+                if (item.kind == .directory or item.file_type == .__unknown__) {
+                    if (item.kind == .directory) {
+                        zgui.pushStyleColor4f(.{
+                            .idx = .text,
+                            .c = .{ 0.75, 0.75, 0.9, 1.0 },
+                        });
+                    } else if (item.file_type == .__unknown__) {
+                        zgui.pushStyleColor4f(.{
+                            .idx = .text,
+                            .c = .{ 0.5, 0.4, 0.4, 1.0 },
+                        });
+                    }
+                }
+
                 if (zgui.selectableStatePtr(selectable_name, .{
                     .pselected = item.selected,
                     .flags = selectable_flags,
                 })) {
                     if (zgui.isMouseDoubleClicked(.left)) {
                         try loadDirectory(allocator, item.name);
+                        if (item.kind == .directory or item.file_type == .__unknown__) {
+                            zgui.popStyleColor(.{});
+                        }
                         break;
                     }
+                }
+                if (item.kind == .directory or item.file_type == .__unknown__) {
+                    zgui.popStyleColor(.{});
                 }
             }
             zgui.endListBox();
@@ -364,6 +393,14 @@ fn showOptionsWindow(allocator: std.mem.Allocator) !void {
     }
 }
 
+fn loadAtBrowsePath(allocator: std.mem.Allocator) !void {
+    var val: []u8 = undefined;
+    var stream = std.io.fixedBufferStream(context.*.browse_path.*);
+    const reader = stream.reader();
+    val = try reader.readUntilDelimiterAlloc(allocator, 0, 4096);
+    try loadDirectoryAbsolute(allocator, val);
+}
+
 fn loadDirectory(allocator: std.mem.Allocator, path: []const u8) !void {
     // Can't close the dir otherwise we end up with a panic situation
     const dir = try context.*.current_dir.*.openDir(path, .{ .iterate = true });
@@ -386,9 +423,9 @@ fn loadDirectoryImpl(allocator: std.mem.Allocator, dir: std.fs.Dir) !void {
     var it: std.fs.Dir.Iterator = dir.iterate();
     var current = it.next() catch null;
     while (current) |entry| : (current = it.next() catch null) {
+        const extension = try util.path.extension(allocator, entry.name);
+        const file_type = std.meta.stringToEnum(FileTypes, extension) orelse .__unknown__;
         if (entry.kind != .directory) {
-            const extension = try util.path.extension(allocator, entry.name);
-            const file_type = std.meta.stringToEnum(FileTypes, extension) orelse .__unknown__;
             if (file_type == .__unknown__ and context.*.show_all_file_types == false) {
                 continue;
             }
@@ -400,6 +437,7 @@ fn loadDirectoryImpl(allocator: std.mem.Allocator, dir: std.fs.Dir) !void {
             .name = entry_name,
             .selected = b,
             .kind = entry.kind,
+            .file_type = file_type,
         });
     }
     // Separate dirs and files
