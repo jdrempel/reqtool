@@ -43,9 +43,13 @@ pub fn build(b: *std.Build) !void {
     const options_module = options_step.createModule();
     exe.root_module.addImport("build_options", options_module);
 
-    const simargs = b.addModule("simargs", .{ .root_source_file = .{ .path = "dep/zigcli/src/mod/simargs.zig" } });
-    exe.root_module.addImport("simargs", simargs);
+    // zigcli stuff
+    {
+        const zigcli = b.dependency("zigcli", .{});
+        exe.root_module.addImport("simargs", zigcli.module("simargs"));
+    }
 
+    // zig-gamedev stuff
     {
         @import("system_sdk").addLibraryPathsTo(exe);
 
@@ -74,18 +78,10 @@ pub fn build(b: *std.Build) !void {
         exe.root_module.addImport("zglfw", zglfw.module("root"));
         exe.linkLibrary(zglfw.artifact("glfw"));
 
-        const zpool = b.dependency("zpool", .{});
-        exe.root_module.addImport("zpool", zpool.module("root"));
-
         const zopengl = b.dependency("zopengl", .{
             .target = target,
         });
         exe.root_module.addImport("zopengl", zopengl.module("root"));
-
-        const zgpu = b.dependency("zgpu", .{
-            .target = target,
-        });
-        exe.root_module.addImport("zgpu", zgpu.module("root"));
     }
 
     // This declares intent for the executable to be installed into the

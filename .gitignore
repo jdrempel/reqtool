@@ -1,6 +1,4 @@
 zig-out/
 zig-cache/
 *.req
-dep/*
-!dep/zigcli
 *.ini

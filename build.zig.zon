@@ -7,14 +7,15 @@
     // This field is optional.
     // Each dependency must either provide a `url` and `hash`, or a `path`.
     .dependencies = .{
-        .system_sdk = .{ .path = "dep/system-sdk" },
-        .zd3d12 = .{ .path = "dep/zd3d12" },
-        .zglfw = .{ .path = "dep/zglfw" },
-        .zgpu = .{ .path = "dep/zgpu" },
-        .zgui = .{ .path = "dep/zgui" },
-        .zopengl = .{ .path = "dep/zopengl" },
-        .zpool = .{ .path = "dep/zpool" },
-        .zwin32 = .{ .path = "dep/zwin32" },
+        .zigcli = .{ .path = "dep/zigcli" },
+        .system_sdk = .{ .path = "dep/zig-gamedev/libs/system-sdk" },
+        .zd3d12 = .{ .path = "dep/zig-gamedev/libs/zd3d12" },
+        .zglfw = .{ .path = "dep/zig-gamedev/libs/zglfw" },
+        .zgpu = .{ .path = "dep/zig-gamedev/libs/zgpu" },
+        .zgui = .{ .path = "dep/zig-gamedev/libs/zgui" },
+        .zopengl = .{ .path = "dep/zig-gamedev/libs/zopengl" },
+        .zpool = .{ .path = "dep/zig-gamedev/libs/zpool" },
+        .zwin32 = .{ .path = "dep/zig-gamedev/libs/zwin32" },
     },
 
     // Specifies the set of files and directories that are included in this package.
@@ -23,7 +24,6 @@
     .paths = .{
         "build.zig",
         "build.zig.zon",
-        "dep",
         "src",
     },
 }

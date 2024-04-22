@@ -2,9 +2,7 @@
 const std = @import("std");
 
 const glfw = @import("zglfw");
-const zgpu = @import("zgpu");
 const zopengl = @import("zopengl");
-const wgpu = zgpu.wgpu;
 const zgui = @import("zgui");
 
 const build_options = @import("build_options");

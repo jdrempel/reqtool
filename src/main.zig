@@ -33,9 +33,9 @@ const Args = struct {
 const root_logger = std.log.scoped(.root);
 
 //-------- LOGGING --------//
-pub const std_options = struct {
-    pub const log_level = .info;
-    pub const logFn = stdLog;
+pub const std_options: std.Options = .{
+    .log_level = .info,
+    .logFn = stdLog,
 };
 fn stdLog(
     comptime level: std.log.Level,
