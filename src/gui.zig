@@ -369,7 +369,6 @@ fn showMainWindow(allocator: std.mem.Allocator) !void {
                 defer allocator.free(full_path);
 
                 const real_path = try std.fs.realpathAlloc(allocator, full_path);
-                defer allocator.free(real_path);
 
                 if (item.kind == .file) {
                     try files.append(real_path);
@@ -535,6 +534,5 @@ fn getFillWidthAgainstText(text: []const u8) f32 {
 fn onOutputNameModified(data: *zgui.InputTextCallbackData) i32 {
     _ = data;
     context.*.output_name_state = .dirty;
-    std.debug.print("Output name modified!\n", .{});
     return 1;
 }
