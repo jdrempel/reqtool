@@ -342,7 +342,11 @@ fn showMainWindow(allocator: std.mem.Allocator) !void {
             .buf = context.*.output_name.*,
         });
         zgui.sameLine(.{});
+        const output_name_empty = (std.mem.indexOfScalar(u8, context.*.output_name.*, 0) == 0);
         zgui.text(extension, .{});
+        if (output_name_empty) {
+            zgui.beginDisabled(.{});
+        }
         if (zgui.button("Generate REQ", .{ .w = -1.0, .h = -1.0 })) {
             var files = StrArrayList.init(allocator);
             const trimmed_browse_path = std.mem.trim(u8, context.*.browse_path.*, &[_]u8{0});
@@ -378,6 +382,9 @@ fn showMainWindow(allocator: std.mem.Allocator) !void {
                 }
             }
             try writer.generateReqFile(allocator, context.*, files);
+        }
+        if (output_name_empty) {
+            zgui.endDisabled();
         }
         if (num_selected == 0) {
             zgui.endDisabled();
