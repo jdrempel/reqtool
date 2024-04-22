@@ -61,8 +61,9 @@ const about_menu_text =
     \\
     \\Author: jedimoose32
     \\Repository: {s}
-    \\License: {s}
+    \\License: MIT
 ;
+const repo_url = "https://github.com/jdrempel/reqtool";
 
 const root_logger = std.log.scoped(.root);
 
@@ -200,8 +201,7 @@ fn showAboutModal() void {
         zgui.text(about_menu_text, .{
             build_options.version,
             build_options.platform,
-            "https://github.com/jdrempel/reqtool",
-            "<license>",
+            repo_url,
         });
         zgui.setItemDefaultFocus();
         if (zgui.button("Close", .{ .w = -1.0 })) {
