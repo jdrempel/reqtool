@@ -62,6 +62,10 @@ pub fn run(allocator: std.mem.Allocator, opt: anytype) !void {
     }
     root_logger.info("Found {d} files", .{files.items.len});
     const output_file_name = std.fs.path.basename(try std.fs.cwd().realpathAlloc(allocator, "."));
-    try writer.generateReqFile(allocator, .{ .parse_odfs = opt.args.@"parse-odfs".? }, files, output_file_name);
+    try writer.generateReqFile(
+        allocator,
+        .{ .parse_odfs = opt.args.@"parse-odfs".?, .output_name = &output_file_name },
+        files,
+    );
     root_logger.info("reqtool completed successfully", .{});
 }

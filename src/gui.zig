@@ -36,6 +36,7 @@ const EntryData = struct {
 const ReqToolContext = struct {
     selection_data: *std.ArrayList(EntryData),
     browse_path: *[:0]u8,
+    output_name: *[:0]u8,
     parse_odfs: bool,
     show_all_file_types: bool,
     current_dir: *std.fs.Dir,
@@ -103,7 +104,12 @@ pub fn run(allocator: std.mem.Allocator, opt: anytype) !void {
     defer selection_data.deinit();
 
     var browse_path = try allocator.allocSentinel(u8, 4096, 0);
+    @memset(browse_path, 0);
     defer allocator.free(browse_path);
+
+    var output_name = try allocator.allocSentinel(u8, 512, 0);
+    @memset(output_name, 0);
+    defer allocator.free(output_name);
 
     // Hacks! parse_odfs has to be a var but isn't mutated outside of opaque C code
     //  so we just double-not it. :)
@@ -111,12 +117,16 @@ pub fn run(allocator: std.mem.Allocator, opt: anytype) !void {
     parse_odfs = !!parse_odfs;
 
     var current_dir = std.fs.cwd();
+    const cwd_realpath = try current_dir.realpathAlloc(allocator, ".");
+    std.mem.copyForwards(u8, output_name, std.fs.path.basename(cwd_realpath));
+    allocator.free(cwd_realpath);
 
     context = try allocator.create(ReqToolContext);
     defer allocator.destroy(context);
     context.* = ReqToolContext{
         .selection_data = &selection_data,
         .browse_path = &browse_path,
+        .output_name = &output_name,
         .parse_odfs = parse_odfs,
         .show_all_file_types = false,
         .current_dir = &current_dir,
@@ -228,7 +238,7 @@ fn showMainWindow(allocator: std.mem.Allocator) !void {
         if (zgui.inputTextWithHint(
             "##Browse",
             .{
-                .hint = "Navigate to an absolute path",
+                .hint = "Navigate to an absolute path (Ctrl+Z to undo)",
                 .buf = context.*.browse_path.*,
                 .flags = .{
                     .enter_returns_true = true,
@@ -240,10 +250,17 @@ fn showMainWindow(allocator: std.mem.Allocator) !void {
             };
         }
         zgui.sameLine(.{});
+        const browse_path_empty = (std.mem.indexOfScalar(u8, context.*.browse_path.*, 0) == 0);
+        if (browse_path_empty) {
+            zgui.beginDisabled(.{});
+        }
         if (zgui.button("Go", .{})) {
             loadAtBrowsePath(allocator) catch |err| {
                 root_logger.err("Cannot load path {s}: {s}", .{ context.*.browse_path.*, @errorName(err) });
             };
+        }
+        if (browse_path_empty) {
+            zgui.endDisabled();
         }
         if (zgui.beginListBox("##FileSelect", .{ .w = -1.0, .h = -100.0 })) {
             for (context.*.selection_data.items) |item| {
@@ -312,10 +329,21 @@ fn showMainWindow(allocator: std.mem.Allocator) !void {
         zgui.sameLine(.{});
         const num_selected = getNumSelected(context.*.selection_data);
         zgui.text("Selected: {d}", .{num_selected});
+        zgui.separator();
         if (num_selected == 0) {
             zgui.beginDisabled(.{});
         }
-        if (zgui.button("Generate REQ", .{})) {
+        zgui.text("Output:", .{});
+        zgui.sameLine(.{});
+        const extension = ".req";
+        zgui.setNextItemWidth(getFillWidthAgainstText(extension));
+        _ = zgui.inputTextWithHint("##OutputName", .{
+            .hint = "Name of output REQ",
+            .buf = context.*.output_name.*,
+        });
+        zgui.sameLine(.{});
+        zgui.text(extension, .{});
+        if (zgui.button("Generate REQ", .{ .w = -1.0, .h = -1.0 })) {
             var files = StrArrayList.init(allocator);
             const trimmed_browse_path = std.mem.trim(u8, context.*.browse_path.*, &[_]u8{0});
             for (context.*.selection_data.items) |item| {
@@ -349,7 +377,7 @@ fn showMainWindow(allocator: std.mem.Allocator) !void {
                     }
                 }
             }
-            try writer.generateReqFile(allocator, context.*, files, std.fs.path.basename(trimmed_browse_path));
+            try writer.generateReqFile(allocator, context.*, files);
         }
         if (num_selected == 0) {
             zgui.endDisabled();
@@ -398,6 +426,7 @@ fn loadAtBrowsePath(allocator: std.mem.Allocator) !void {
     var stream = std.io.fixedBufferStream(context.*.browse_path.*);
     const reader = stream.reader();
     val = try reader.readUntilDelimiterAlloc(allocator, 0, 4096);
+    if (val.len == 0) return;
     try loadDirectoryAbsolute(allocator, val);
 }
 
@@ -472,4 +501,11 @@ fn setAllFilesSelected(val: bool, selection_data: *std.ArrayList(EntryData)) voi
     for (selection_data.*.items) |item| {
         item.selected.* = (item.kind == .file) and val;
     }
+}
+
+fn getFillWidthAgainstText(text: []const u8) f32 {
+    const avail = zgui.getContentRegionAvail();
+    const text_size = zgui.calcTextSize(text, .{});
+    const style_inner_spacing = zgui.getStyle().item_inner_spacing;
+    return avail[0] - (text_size[0] + 2.0 * style_inner_spacing[0]);
 }

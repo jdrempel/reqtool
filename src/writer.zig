@@ -183,7 +183,6 @@ pub fn generateReqFile(
     allocator: std.mem.Allocator,
     options: anytype,
     files: StrArrayList,
-    output_file_name: []const u8,
 ) !void {
     var db = ReqDatabase.init(allocator, options);
 
@@ -192,13 +191,15 @@ pub fn generateReqFile(
         try db.addEntry(file_path);
     }
 
-    const full_output_file_name = if (!std.mem.endsWith(u8, output_file_name, ".req")) fofn: {
-        break :fofn try std.mem.concat(allocator, u8, &[_][]const u8{ output_file_name, ".req" });
+    var split_output_name = std.mem.splitScalar(u8, options.output_name.*, 0);
+    const nice_output_name = split_output_name.first();
+    const full_output_file_name = if (!std.mem.endsWith(u8, nice_output_name, ".req")) fofn: {
+        break :fofn try std.mem.concat(allocator, u8, &[_][]const u8{ nice_output_name, ".req" });
     } else fofn: {
-        break :fofn output_file_name;
+        break :fofn nice_output_name;
     };
     const output_file = std.fs.cwd().createFile(full_output_file_name, .{}) catch |err| {
-        writer_logger.err("{!s}: Unable to create file {s}\n", .{ @errorName(err), output_file_name });
+        writer_logger.err("{!s}: Unable to create file {s}\n", .{ @errorName(err), full_output_file_name });
         std.process.exit(1);
     };
     const file_writer = output_file.writer();
