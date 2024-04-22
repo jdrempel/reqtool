@@ -7,12 +7,14 @@
     // This field is optional.
     // Each dependency must either provide a `url` and `hash`, or a `path`.
     .dependencies = .{
-        .@"system-sdk" = .{ .path = "dep/system-sdk" },
+        .system_sdk = .{ .path = "dep/system-sdk" },
+        .zd3d12 = .{ .path = "dep/zd3d12" },
         .zglfw = .{ .path = "dep/zglfw" },
         .zgpu = .{ .path = "dep/zgpu" },
         .zgui = .{ .path = "dep/zgui" },
-        .zpool = .{ .path = "dep/zpool" },
         .zopengl = .{ .path = "dep/zopengl" },
+        .zpool = .{ .path = "dep/zpool" },
+        .zwin32 = .{ .path = "dep/zwin32" },
     },
 
     // Specifies the set of files and directories that are included in this package.

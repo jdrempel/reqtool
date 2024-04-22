@@ -47,6 +47,21 @@ pub fn build(b: *std.Build) !void {
     exe.root_module.addImport("simargs", simargs);
 
     {
+        @import("system_sdk").addLibraryPathsTo(exe);
+
+        if (target.query.os_tag == .windows) {
+            const zwin32 = b.dependency("zwin32", .{});
+            const zwin32_path = zwin32.path("").getPath(b);
+            exe.root_module.addImport("zwin32", zwin32.module("root"));
+            try @import("zwin32").install_d3d12(b.getInstallStep(), .bin, zwin32_path);
+
+            const zd3d12 = b.dependency("zd3d12", .{
+                .debug_layer = false,
+                .gbv = false,
+            });
+            exe.root_module.addImport("zd3d12", zd3d12.module("root"));
+        }
+
         const zgui = b.dependency("zgui", .{
             .shared = false,
             .with_implot = true,
