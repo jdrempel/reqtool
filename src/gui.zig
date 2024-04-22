@@ -33,6 +33,11 @@ const EntryData = struct {
     }
 };
 
+const InputState = enum {
+    clean,
+    dirty,
+};
+
 const ReqToolContext = struct {
     selection_data: *std.ArrayList(EntryData),
     browse_path: *[:0]u8,
@@ -40,6 +45,7 @@ const ReqToolContext = struct {
     parse_odfs: bool,
     show_all_file_types: bool,
     current_dir: *std.fs.Dir,
+    output_name_state: InputState = .clean,
 };
 
 //-------- STATIC CONSTANTS --------//
@@ -340,6 +346,10 @@ fn showMainWindow(allocator: std.mem.Allocator) !void {
         _ = zgui.inputTextWithHint("##OutputName", .{
             .hint = "Name of output REQ",
             .buf = context.*.output_name.*,
+            .callback = onOutputNameModified,
+            .flags = .{
+                .callback_edit = true,
+            },
         });
         zgui.sameLine(.{});
         const output_name_empty = (std.mem.indexOfScalar(u8, context.*.output_name.*, 0) == 0);
@@ -455,6 +465,11 @@ fn loadDirectoryImpl(allocator: std.mem.Allocator, dir: std.fs.Dir) !void {
     std.mem.copyForwards(u8, context.*.browse_path.*, new_browse_path);
     context.*.selection_data.*.clearAndFree();
     context.*.current_dir.* = dir;
+    if (context.*.output_name_state == .clean) {
+        const cwd_realpath = try context.*.current_dir.*.realpathAlloc(allocator, ".");
+        @memset(context.*.output_name.*[0..512], 0);
+        std.mem.copyForwards(u8, context.*.output_name.*, std.fs.path.basename(cwd_realpath));
+    }
 
     var it: std.fs.Dir.Iterator = dir.iterate();
     var current = it.next() catch null;
@@ -515,4 +530,11 @@ fn getFillWidthAgainstText(text: []const u8) f32 {
     const text_size = zgui.calcTextSize(text, .{});
     const style_inner_spacing = zgui.getStyle().item_inner_spacing;
     return avail[0] - (text_size[0] + 2.0 * style_inner_spacing[0]);
+}
+
+fn onOutputNameModified(data: *zgui.InputTextCallbackData) i32 {
+    _ = data;
+    context.*.output_name_state = .dirty;
+    std.debug.print("Output name modified!\n", .{});
+    return 1;
 }
