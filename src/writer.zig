@@ -170,7 +170,7 @@ const ReqDatabase = struct {
                 }
             }.lt);
             for (self.sections.get(section_name).?.items) |item| {
-                try std.fmt.format(writer, "\t\t{!s}\n", .{self.quote(item)});
+                try std.fmt.format(writer, "\t\t{!s}\n", .{self.quote(std.fs.path.basename(item))});
             }
             try writer.writeAll("\t}\n");
         }
