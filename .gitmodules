@@ -1,6 +1,3 @@
 [submodule "dep/zigcli"]
 	path = dep/zigcli
 	url = https://github.com/jiacai2050/zigcli.git
-[submodule "dep/zig-gamedev"]
-	path = dep/zig-gamedev
-	url = https://github.com/zig-gamedev/zig-gamedev.git
