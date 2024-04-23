@@ -95,8 +95,8 @@ pub fn run(allocator: std.mem.Allocator, opt: anytype) !void {
         const scale = window.getContentScale();
         break :scale_factor @max(scale[0], scale[1]);
     };
-    _ = zgui.io.addFontFromFile(
-        "assets/Roboto-Medium.ttf",
+    _ = zgui.io.addFontFromMemoryCompressed(
+        &(@import("assets/font_binary.zig").roboto_medium_compressed_data),
         std.math.floor(16.0 * scale_factor),
     );
 
