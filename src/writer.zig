@@ -1,5 +1,6 @@
 const std = @import("std");
 
+const modargs = @import("args.zig");
 const parser = @import("parser.zig");
 const util = @import("util/root.zig");
 
@@ -62,7 +63,7 @@ const Sections = enum {
     world,
 };
 
-const ReqDatabase = struct {
+pub const ReqDatabase = struct {
     allocator: std.mem.Allocator,
     parse_odfs: bool = false,
     sections: std.StringHashMap(StrArrayList),
@@ -184,11 +185,11 @@ pub fn generateReqFile(
     options: anytype,
     files: StrArrayList,
 ) !void {
-    var db = ReqDatabase.init(allocator, options);
+    // var db = ReqDatabase.init(allocator, options);
 
     for (files.items) |file_path| {
         writer_logger.debug("Adding entry for {s}...", .{file_path});
-        try db.addEntry(file_path);
+        try options.db.addEntry(file_path);
     }
 
     var split_output_name = std.mem.splitScalar(u8, options.output_name.*, 0);
@@ -204,5 +205,5 @@ pub fn generateReqFile(
     };
     const file_writer = output_file.writer();
     writer_logger.info("Writing output to {s}", .{full_output_file_name});
-    try db.write(file_writer);
+    try options.*.db.write(file_writer);
 }

@@ -2,34 +2,14 @@
 const std = @import("std");
 const simargs = @import("simargs");
 
-const writer = @import("writer.zig");
 const cli = @import("cli.zig");
 const gui = @import("gui.zig");
+const modargs = @import("args.zig");
 const util = @import("util/root.zig");
+const writer = @import("writer.zig");
 
 //-------- TYPES --------//
 const StrArrayList = std.ArrayList([]const u8);
-
-const Args = struct {
-    output: ?[]const u8,
-    @"parse-odfs": ?bool = false,
-    help: bool = false,
-
-    pub const __shorts__ = .{
-        .output = .o,
-        .@"parse-odfs" = .p,
-        .help = .h,
-    };
-
-    pub const __messages__ = .{
-        .output = "The name of the .req file to output (no extension required)",
-        .@"parse-odfs" =
-        \\When set, .odf files will be parsed and have dependencies added to 
-        \\the .req file automatically
-        ,
-    };
-};
-
 const root_logger = std.log.scoped(.root);
 
 //-------- LOGGING --------//
@@ -63,20 +43,34 @@ fn stdLog(
     nosuspend stderr.print(prefix ++ format ++ "\n", args) catch return;
 }
 
+const UiType = enum { cli, gui };
+const Ui = union(UiType) {
+    cli: cli.Cli,
+    gui: gui.Gui,
+};
+
 //-------- CODE :) --------//
 pub fn main() !void {
     root_logger.info("Starting reqtool", .{});
 
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
-    const allocator = arena.allocator();
+    const ally = arena.allocator();
 
-    var opt = try simargs.parse(allocator, Args, "FILES...", null);
-    defer opt.deinit();
+    var args = try simargs.parse(ally, modargs.Args, "FILES...", null);
+    defer args.deinit();
 
-    if (opt.positional_args.items.len > 0) {
-        try cli.run(allocator, opt);
-    } else {
-        try gui.run(allocator, opt);
+    const options = modargs.Options{
+        .parse_odfs = args.args.@"parse-odfs".?,
+    };
+
+    var ui: Ui = if (args.positional_args.items.len > 0) cli: {
+        break :cli Ui{ .cli = try cli.Cli.init(ally, options) };
+    } else gui: {
+        break :gui Ui{ .gui = try gui.Gui.init(ally, options) };
+    };
+    switch (ui) {
+        .cli => try ui.cli.run(),
+        .gui => try ui.gui.run(),
     }
 }

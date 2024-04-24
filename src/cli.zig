@@ -10,6 +10,20 @@ const StrArrayList = std.ArrayList([]const u8);
 const root_logger = std.log.scoped(.root);
 
 //-------- CODE --------//
+pub const Cli = struct {
+    const Self = @This();
+
+    pub fn init(allocator: std.mem.Allocator, options: anytype) !Self {
+        _ = allocator;
+        _ = options;
+        return Self{};
+    }
+
+    pub fn run(self: *Self) !void {
+        _ = self;
+    }
+};
+
 pub fn run(allocator: std.mem.Allocator, opt: anytype) !void {
     var files = StrArrayList.init(allocator);
     defer files.deinit();
