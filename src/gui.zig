@@ -293,56 +293,7 @@ pub const Gui = struct {
                 zgui.endDisabled();
             }
             if (zgui.beginListBox("##FileSelect", .{ .w = -1.0, .h = -100.0 })) {
-                for (context.*.selection_data.items) |item| {
-                    const prefix = switch (item.kind) {
-                        .directory => "-> ",
-                        .file => "    ",
-                        else => " " ** 4,
-                    };
-                    const selectable_name = try std.mem.concatWithSentinel(
-                        self.allocator,
-                        u8,
-                        &[_][]const u8{ prefix, item.name },
-                        0,
-                    );
-
-                    const selectable_flags: zgui.SelectableFlags = switch (item.kind) {
-                        .directory => .{ .allow_double_click = true, .allow_overlap = true },
-                        .file => .{ .allow_overlap = true },
-                        else => .{},
-                    };
-
-                    // Directories should be pale blue, unknown types should be red
-                    if (item.kind == .directory or item.file_type == .__unknown__) {
-                        if (item.kind == .directory) {
-                            zgui.pushStyleColor4f(.{
-                                .idx = .text,
-                                .c = .{ 0.75, 0.75, 0.9, 1.0 },
-                            });
-                        } else if (item.file_type == .__unknown__) {
-                            zgui.pushStyleColor4f(.{
-                                .idx = .text,
-                                .c = .{ 0.5, 0.4, 0.4, 1.0 },
-                            });
-                        }
-                    }
-
-                    if (zgui.selectableStatePtr(selectable_name, .{
-                        .pselected = item.selected,
-                        .flags = selectable_flags,
-                    })) {
-                        if (zgui.isMouseDoubleClicked(.left)) {
-                            try self.loadDirectory(item.name);
-                            if (item.kind == .directory or item.file_type == .__unknown__) {
-                                zgui.popStyleColor(.{});
-                            }
-                            break;
-                        }
-                    }
-                    if (item.kind == .directory or item.file_type == .__unknown__) {
-                        zgui.popStyleColor(.{});
-                    }
-                }
+                self.showFileBrowserContents();
                 zgui.endListBox();
             }
             if (zgui.button("Select all", .{})) {
@@ -382,39 +333,7 @@ pub const Gui = struct {
                 zgui.beginDisabled(.{});
             }
             if (zgui.button("Generate REQ", .{ .w = -1.0, .h = -1.0 })) {
-                var files = StrArrayList.init(self.allocator);
-                const trimmed_browse_path = std.mem.trim(u8, context.*.browse_path.*, &[_]u8{0});
-                for (context.*.selection_data.items) |item| {
-                    if (!item.selected.*) continue;
-                    const full_path = try std.fs.path.join(self.allocator, &[_][]const u8{
-                        trimmed_browse_path,
-                        item.name,
-                    });
-                    defer self.allocator.free(full_path);
-
-                    const real_path = try std.fs.realpathAlloc(self.allocator, full_path);
-
-                    if (item.kind == .file) {
-                        try files.append(real_path);
-                    } else if (item.kind == .directory) {
-                        root_logger.debug("Iterating {s}", .{real_path});
-                        const dir = try std.fs.openDirAbsolute(real_path, .{ .iterate = true });
-                        var iter = dir.iterate();
-                        var current = try iter.next();
-                        while (current) |entry| : (current = try iter.next()) {
-                            if (entry.kind != .file) {
-                                root_logger.debug("Skipping {s} because it is not a file...", .{entry.name});
-                                continue;
-                            }
-                            if ((try util.path.extension(self.allocator, entry.name)).len == 0) {
-                                root_logger.debug("Skipping {s} because it has no extension...", .{entry.name});
-                                continue;
-                            }
-                            try files.append(try std.fs.path.join(self.allocator, &[_][]const u8{ real_path, entry.name }));
-                        }
-                    }
-                }
-                try writer.generateReqFile(self.allocator, context, files);
+                try self.generateReqFile();
             }
             if (output_name_empty) {
                 zgui.endDisabled();
@@ -423,6 +342,62 @@ pub const Gui = struct {
                 zgui.endDisabled();
             }
             zgui.end();
+        }
+    }
+
+    fn showFileBrowserContents(self: *Self) void {
+        for (context.*.selection_data.items) |item| {
+            const prefix = switch (item.kind) {
+                .directory => "-> ",
+                .file => "    ",
+                else => " " ** 4,
+            };
+            const selectable_name = std.mem.concatWithSentinel(
+                self.allocator,
+                u8,
+                &[_][]const u8{ prefix, item.name },
+                0,
+            ) catch |err| e: {
+                root_logger.err("OOM: {s}", .{@errorName(err)});
+                break :e "ERROR: Out of memory";
+            };
+
+            const selectable_flags: zgui.SelectableFlags = switch (item.kind) {
+                .directory => .{ .allow_double_click = true, .allow_overlap = true },
+                .file => .{ .allow_overlap = true },
+                else => .{},
+            };
+
+            // Directories should be pale blue, unknown types should be red
+            if (item.kind == .directory or item.file_type == .__unknown__) {
+                if (item.kind == .directory) {
+                    zgui.pushStyleColor4f(.{
+                        .idx = .text,
+                        .c = .{ 0.75, 0.75, 0.9, 1.0 },
+                    });
+                } else if (item.file_type == .__unknown__) {
+                    zgui.pushStyleColor4f(.{
+                        .idx = .text,
+                        .c = .{ 0.5, 0.4, 0.4, 1.0 },
+                    });
+                }
+            }
+
+            if (zgui.selectableStatePtr(selectable_name, .{
+                .pselected = item.selected,
+                .flags = selectable_flags,
+            })) {
+                if (zgui.isMouseDoubleClicked(.left)) {
+                    self.loadDirectory(item.name) catch break;
+                    if (item.kind == .directory or item.file_type == .__unknown__) {
+                        zgui.popStyleColor(.{});
+                    }
+                    break;
+                }
+            }
+            if (item.kind == .directory or item.file_type == .__unknown__) {
+                zgui.popStyleColor(.{});
+            }
         }
     }
 
@@ -524,6 +499,42 @@ pub const Gui = struct {
                 return std.ascii.lessThanIgnoreCase(l.name, r.name) and l.kindLessThan(r);
             }
         }.lt);
+    }
+
+    fn generateReqFile(self: *Self) !void {
+        var files = StrArrayList.init(self.allocator);
+        const trimmed_browse_path = std.mem.trim(u8, context.*.browse_path.*, &[_]u8{0});
+        for (context.*.selection_data.items) |item| {
+            if (!item.selected.*) continue;
+            const full_path = try std.fs.path.join(self.allocator, &[_][]const u8{
+                trimmed_browse_path,
+                item.name,
+            });
+            defer self.allocator.free(full_path);
+
+            const real_path = try std.fs.realpathAlloc(self.allocator, full_path);
+
+            if (item.kind == .file) {
+                try files.append(real_path);
+            } else if (item.kind == .directory) {
+                root_logger.debug("Iterating {s}", .{real_path});
+                const dir = try std.fs.openDirAbsolute(real_path, .{ .iterate = true });
+                var iter = dir.iterate();
+                var current = try iter.next();
+                while (current) |entry| : (current = try iter.next()) {
+                    if (entry.kind != .file) {
+                        root_logger.debug("Skipping {s} because it is not a file...", .{entry.name});
+                        continue;
+                    }
+                    if ((try util.path.extension(self.allocator, entry.name)).len == 0) {
+                        root_logger.debug("Skipping {s} because it has no extension...", .{entry.name});
+                        continue;
+                    }
+                    try files.append(try std.fs.path.join(self.allocator, &[_][]const u8{ real_path, entry.name }));
+                }
+            }
+        }
+        try writer.generateReqFile(self.allocator, context, files);
     }
 };
 
