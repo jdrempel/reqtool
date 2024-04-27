@@ -1,3 +1,5 @@
+const std = @import("std");
+
 pub const Args = struct {
     output: ?[]const u8,
     @"parse-odfs": ?bool = false,
@@ -19,5 +21,7 @@ pub const Args = struct {
 };
 
 pub const Options = struct {
+    files: std.ArrayList([]const u8),
+    output_name: []const u8,
     parse_odfs: bool,
 };

@@ -61,7 +61,9 @@ pub fn main() !void {
     defer args.deinit();
 
     const options = modargs.Options{
+        .files = args.positional_args,
         .parse_odfs = args.args.@"parse-odfs".?,
+        .output_name = args.args.output orelse "",
     };
 
     var ui: Ui = if (args.positional_args.items.len > 0) cli: {

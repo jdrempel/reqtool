@@ -205,5 +205,5 @@ pub fn generateReqFile(
     };
     const file_writer = output_file.writer();
     writer_logger.info("Writing output to {s}", .{full_output_file_name});
-    try options.*.db.write(file_writer);
+    try options.db.write(file_writer);
 }
