@@ -199,11 +199,18 @@ pub fn generateReqFile(
     } else fofn: {
         break :fofn nice_output_name;
     };
-    const output_file = std.fs.cwd().createFile(full_output_file_name, .{}) catch |err| {
-        writer_logger.err("{!s}: Unable to create file {s}\n", .{ @errorName(err), full_output_file_name });
+    const full_output_file_path = switch (options.output_location) {
+        .@"Current working directory" => full_output_file_name,
+        .@"Parent of selected files" => loc: {
+            const parent = std.fs.path.dirname(files.items[0]).?;
+            break :loc try std.fs.path.join(allocator, &[_][]const u8{ parent, full_output_file_name });
+        },
+    };
+    const output_file = std.fs.cwd().createFile(full_output_file_path, .{}) catch |err| {
+        writer_logger.err("{!s}: Unable to create file {s}\n", .{ @errorName(err), full_output_file_path });
         std.process.exit(1);
     };
     const file_writer = output_file.writer();
-    writer_logger.info("Writing output to {s}", .{full_output_file_name});
+    writer_logger.info("Writing output to {s}", .{full_output_file_path});
     try options.db.write(file_writer);
 }

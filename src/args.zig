@@ -20,6 +20,11 @@ pub const Args = struct {
     };
 };
 
+pub const OutputLocation = enum {
+    @"Current working directory",
+    @"Parent of selected files",
+};
+
 pub const Options = struct {
     files: std.ArrayList([]const u8),
     output_name: []const u8,

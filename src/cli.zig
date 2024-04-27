@@ -85,6 +85,7 @@ pub const Cli = struct {
             .{
                 .parse_odfs = self.options.parse_odfs,
                 .output_name = &output_file_name,
+                .output_location = modargs.OutputLocation.@"Current working directory",
                 .db = &db,
             },
             files,

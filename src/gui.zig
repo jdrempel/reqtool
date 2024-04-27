@@ -40,6 +40,7 @@ const ReqToolContext = struct {
     selection_data: *std.ArrayList(EntryData),
     browse_path: *[:0]u8,
     output_name: *[:0]u8,
+    output_location: modargs.OutputLocation,
     parse_odfs: bool,
     show_all_file_types: bool,
     current_dir: *std.fs.Dir,
@@ -145,6 +146,7 @@ pub const Gui = struct {
             .selection_data = &selection_data,
             .browse_path = &browse_path,
             .output_name = &output_name,
+            .output_location = .@"Current working directory",
             .parse_odfs = parse_odfs,
             .show_all_file_types = false,
             .current_dir = &current_dir,
@@ -261,6 +263,7 @@ pub const Gui = struct {
                 .no_collapse = true,
             },
         })) {
+            // Navigation bar
             if (zgui.button("Go up", .{})) {
                 try self.loadDirectory("..");
             }
@@ -292,10 +295,14 @@ pub const Gui = struct {
             if (browse_path_empty) {
                 zgui.endDisabled();
             }
-            if (zgui.beginListBox("##FileSelect", .{ .w = -1.0, .h = -100.0 })) {
+
+            // File select box
+            if (zgui.beginListBox("##FileSelect", .{ .w = -1.0, .h = -140.0 })) {
                 self.showFileBrowserContents();
                 zgui.endListBox();
             }
+
+            // Selection bar
             if (zgui.button("Select all", .{})) {
                 setAllSelected(true, context.*.selection_data);
             }
@@ -310,11 +317,14 @@ pub const Gui = struct {
             zgui.sameLine(.{});
             const num_selected = getNumSelected(context.*.selection_data);
             zgui.text("Selected: {d}", .{num_selected});
+
             zgui.separator();
+
+            // Output name
             if (num_selected == 0) {
                 zgui.beginDisabled(.{});
             }
-            zgui.text("Output:", .{});
+            zgui.text("Output name:", .{});
             zgui.sameLine(.{});
             const extension = ".req";
             zgui.setNextItemWidth(getFillWidthAgainstText(extension));
@@ -329,6 +339,13 @@ pub const Gui = struct {
             zgui.sameLine(.{});
             const output_name_empty = (std.mem.indexOfScalar(u8, context.*.output_name.*, 0) == 0);
             zgui.text(extension, .{});
+
+            // Output location
+            zgui.text("Output location:", .{});
+            zgui.sameLine(.{});
+            _ = zgui.comboFromEnum("##output_location", &context.output_location);
+
+            // Generate REQ button
             if (output_name_empty) {
                 zgui.beginDisabled(.{});
             }
@@ -535,6 +552,7 @@ pub const Gui = struct {
             }
         }
         try writer.generateReqFile(self.allocator, context, files);
+        try self.loadDirectory(".");
     }
 };
 
