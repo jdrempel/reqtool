@@ -1,5 +1,6 @@
 //-------- IMPORTS --------//
 const std = @import("std");
+const expect = std.testing.expect;
 
 const glfw = @import("zglfw");
 const zopengl = @import("zopengl");
@@ -28,6 +29,31 @@ const EntryData = struct {
             return false;
         }
         return true;
+    }
+
+    test "kindLessThan" {
+        var a_selected = false;
+        const a = EntryData{
+            .name = "a",
+            .selected = &a_selected,
+            .kind = .directory,
+            .file_type = .__unknown__,
+        };
+        var b_selected = false;
+        const b = EntryData{
+            .name = "b",
+            .selected = &b_selected,
+            .kind = .file,
+            .file_type = .__unknown__,
+        };
+
+        // .directory should be less than .file and vice versa
+        expect(a.kindLessThan(b));
+        expect(!b.kindLessThan(a));
+
+        // Perhaps counterintuitively, should return true if kinds are equal
+        expect(a.kindLessThan(a));
+        expect(b.kindLessThan(b));
     }
 };
 
