@@ -67,6 +67,7 @@ const ReqToolContext = struct {
     browse_path: *[:0]u8,
     output_name: *[:0]u8,
     output_location: modargs.OutputLocation,
+    preview: *[:0]u8,
     parse_odfs: bool,
     show_all_file_types: bool,
     current_dir: *std.fs.Dir,
@@ -156,6 +157,10 @@ pub const Gui = struct {
         @memset(output_name, 0);
         defer self.allocator.free(output_name);
 
+        var preview = try self.allocator.allocSentinel(u8, 1 << 20, 0);
+        @memset(preview, 0);
+        defer self.allocator.free(preview);
+
         // Hacks! parse_odfs has to be a var but isn't mutated outside of opaque C code
         //  so we just double-not it. :)
         var parse_odfs = self.options.parse_odfs;
@@ -173,6 +178,7 @@ pub const Gui = struct {
             .browse_path = &browse_path,
             .output_name = &output_name,
             .output_location = .@"Current working directory",
+            .preview = &preview,
             .parse_odfs = parse_odfs,
             .show_all_file_types = false,
             .current_dir = &current_dir,
@@ -180,6 +186,9 @@ pub const Gui = struct {
         };
 
         try self.loadDirectory(".");
+        self.refreshPreviewWindow() catch {
+            root_logger.err("Unable to refresh preview window!", .{});
+        };
 
         while (!window.shouldClose()) {
             self.setupNewFrame(&gl, &window);
@@ -437,6 +446,9 @@ pub const Gui = struct {
                     }
                     break;
                 }
+                self.refreshPreviewWindow() catch {
+                    root_logger.err("Unable to refresh preview window!", .{});
+                };
             }
             if (item.kind == .directory or item.file_type == .__unknown__) {
                 zgui.popStyleColor(.{});
@@ -445,6 +457,8 @@ pub const Gui = struct {
     }
 
     fn showPreviewWindow(self: *Self) !void {
+        _ = self;
+
         const main_viewport = zgui.getMainViewport();
         const main_viewport_size = main_viewport.getWorkSize();
         const main_viewport_pos = main_viewport.getWorkPos();
@@ -471,14 +485,11 @@ pub const Gui = struct {
         })) {
             zgui.text("Preview", .{});
             zgui.separator();
-            var buf: [1 << 24:0]u8 = undefined;
-            @memset(buf[0 .. 1 << 24], 0);
-            var stream = std.io.fixedBufferStream(&buf);
-            const buf_writer = stream.writer();
-            try self.previewReqFile(buf_writer);
-            _ = zgui.inputTextMultiline("##preview-text", .{
-                .buf = &buf,
+            _ = zgui.inputTextMultiline("##PreviewText", .{
+                .buf = context.*.preview.*,
+                .callback = onOutputNameModified,
                 .flags = .{
+                    .callback_edit = true,
                     .read_only = true,
                 },
                 .w = -1.0,
@@ -520,6 +531,9 @@ pub const Gui = struct {
             @memset(context.*.output_name.*[0..512], 0);
             std.mem.copyForwards(u8, context.*.output_name.*, std.fs.path.basename(cwd_realpath));
         }
+        self.refreshPreviewWindow() catch {
+            root_logger.err("Unable to refresh preview window!", .{});
+        };
 
         var it: std.fs.Dir.Iterator = dir.iterate();
         var current = it.next() catch null;
@@ -553,6 +567,13 @@ pub const Gui = struct {
                 return std.ascii.lessThanIgnoreCase(l.name, r.name) and l.kindLessThan(r);
             }
         }.lt);
+    }
+
+    fn refreshPreviewWindow(self: *Self) !void {
+        @memset(context.*.preview.*[0 .. 1 << 20], 0);
+        var stream = std.io.fixedBufferStream(context.*.preview.*);
+        const buf_writer = stream.writer();
+        try self.previewReqFile(buf_writer);
     }
 
     fn previewReqFile(self: *Self, buffer_writer: anytype) !void {
