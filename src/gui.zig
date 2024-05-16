@@ -445,8 +445,6 @@ pub const Gui = struct {
     }
 
     fn showPreviewWindow(self: *Self) !void {
-        _ = self;
-
         const main_viewport = zgui.getMainViewport();
         const main_viewport_size = main_viewport.getWorkSize();
         const main_viewport_pos = main_viewport.getWorkPos();
@@ -473,6 +471,19 @@ pub const Gui = struct {
         })) {
             zgui.text("Preview", .{});
             zgui.separator();
+            var buf: [1 << 24:0]u8 = undefined;
+            @memset(buf[0 .. 1 << 24], 0);
+            var stream = std.io.fixedBufferStream(&buf);
+            const buf_writer = stream.writer();
+            try self.previewReqFile(buf_writer);
+            _ = zgui.inputTextMultiline("##preview-text", .{
+                .buf = &buf,
+                .flags = .{
+                    .read_only = true,
+                },
+                .w = -1.0,
+                .h = -1.0,
+            });
             zgui.end();
         }
     }
@@ -542,6 +553,42 @@ pub const Gui = struct {
                 return std.ascii.lessThanIgnoreCase(l.name, r.name) and l.kindLessThan(r);
             }
         }.lt);
+    }
+
+    fn previewReqFile(self: *Self, buffer_writer: anytype) !void {
+        var files = StrArrayList.init(self.allocator);
+        const trimmed_browse_path = std.mem.trim(u8, context.*.browse_path.*, &[_]u8{0});
+        for (context.*.selection_data.items) |item| {
+            if (!item.selected.*) continue;
+            const full_path = try std.fs.path.join(self.allocator, &[_][]const u8{
+                trimmed_browse_path,
+                item.name,
+            });
+            defer self.allocator.free(full_path);
+
+            const real_path = try std.fs.realpathAlloc(self.allocator, full_path);
+
+            if (item.kind == .file) {
+                try files.append(real_path);
+            } else if (item.kind == .directory) {
+                root_logger.debug("Iterating {s}", .{real_path});
+                const dir = try std.fs.openDirAbsolute(real_path, .{ .iterate = true });
+                var iter = dir.iterate();
+                var current = try iter.next();
+                while (current) |entry| : (current = try iter.next()) {
+                    if (entry.kind != .file) {
+                        root_logger.debug("Skipping {s} because it is not a file...", .{entry.name});
+                        continue;
+                    }
+                    if ((try util.path.extension(self.allocator, entry.name)).len == 0) {
+                        root_logger.debug("Skipping {s} because it has no extension...", .{entry.name});
+                        continue;
+                    }
+                    try files.append(try std.fs.path.join(self.allocator, &[_][]const u8{ real_path, entry.name }));
+                }
+            }
+        }
+        try writer.previewReqFile(buffer_writer, context, files);
     }
 
     fn generateReqFile(self: *Self) !void {

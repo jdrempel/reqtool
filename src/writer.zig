@@ -78,6 +78,13 @@ pub const ReqDatabase = struct {
         };
     }
 
+    pub fn reset(self: *Self) void {
+        var iter = self.sections.keyIterator();
+        while (iter.next()) |section_name| {
+            _ = self.sections.remove(section_name.*);
+        }
+    }
+
     pub fn addEntry(self: *Self, entry: []const u8) !void {
         const extension = try util.path.extension(self.allocator, entry);
         defer self.allocator.free(extension);
@@ -180,12 +187,27 @@ pub const ReqDatabase = struct {
     }
 };
 
+pub fn previewReqFile(
+    writer: anytype,
+    options: anytype,
+    files: StrArrayList,
+) !void {
+    options.db.reset();
+
+    for (files.items) |file_path| {
+        writer_logger.debug("Adding entry for {s}...", .{file_path});
+        try options.db.addEntry(file_path);
+    }
+
+    try options.db.write(writer);
+}
+
 pub fn generateReqFile(
     allocator: std.mem.Allocator,
     options: anytype,
     files: StrArrayList,
 ) !void {
-    // var db = ReqDatabase.init(allocator, options);
+    options.db.reset();
 
     for (files.items) |file_path| {
         writer_logger.debug("Adding entry for {s}...", .{file_path});
