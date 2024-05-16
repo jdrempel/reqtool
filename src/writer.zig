@@ -232,7 +232,10 @@ pub fn generateReqFile(
         writer_logger.err("{!s}: Unable to create file {s}\n", .{ @errorName(err), full_output_file_path });
         std.process.exit(1);
     };
+
     const file_writer = output_file.writer();
     writer_logger.info("Writing output to {s}", .{full_output_file_path});
     try options.db.write(file_writer);
+
+    output_file.close();
 }

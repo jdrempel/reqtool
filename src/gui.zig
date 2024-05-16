@@ -641,6 +641,7 @@ pub const Gui = struct {
                         root_logger.debug("Skipping {s} because it has no extension...", .{entry.name});
                         continue;
                     }
+                    // TODO make this respect the unrecognized file types option
                     try files.append(try std.fs.path.join(self.allocator, &[_][]const u8{ real_path, entry.name }));
                 }
             }
